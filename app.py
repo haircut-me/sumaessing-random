@@ -2,13 +2,14 @@ import streamlit as st
 import random
 import json
 import os
-import re
 from datetime import datetime
+
+# 🚀 수학 수식/그래프 보존을 위한 고성능 PDF 이미지 변환 라이브러리 자동 설치
 try:
-    import pypdf
+    import fitz  # PyMuPDF
 except ImportError:
-    os.system("pip install pypdf")
-    import pypdf
+    os.system("pip install pymupdf")
+    import fitz
 
 SAVE_FILE = "math_pilot_solo_data.json"
 FIXED_PDF_NAME = "sumaessing.pdf"
@@ -35,6 +36,18 @@ def load_from_local():
         except:
             pass
 
+# ⚙️ PDF 페이지를 고화질 이미지(PNG)로 변환하는 함수
+def render_pdf_page(file_path, page_num):
+    try:
+        doc = fitz.open(file_path)
+        page = doc.load_page(page_num)
+        pix = page.get_pixmap(dpi=150)  # 150 DPI로 선명하게 렌더링
+        img_bytes = pix.tobytes("png")
+        doc.close()
+        return img_bytes
+    except Exception as e:
+        return None
+
 st.set_page_config(page_title="수매씽 랜덤 문제 만들기", layout="wide")
 
 if 'initialized' not in st.session_state:
@@ -59,58 +72,24 @@ if 'problems_pool' not in st.session_state:
 if 'current_idx' not in st.session_state:
     st.session_state.current_idx = 0
 
-def extract_problems_strictly_from_pdf_path(file_path):
-    # 🛡️ PDF가 깨져있을 때 앱이 멈추지 않도록 예외 처리 추가
-    try:
-        reader = pypdf.PdfReader(file_path)
-        full_text = ""
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                full_text += text + "\n"
-    except Exception as e:
-        return "ERROR_CORRUPTED"
-    
-    raw_blocks = re.split(r'(?=\b\d{1,2}\s*[.\],、])|(?=\[문항\s*\d{1,2}\])', full_text)
-    cleaned_problems = []
-    prob_id = 1
-    
-    for block in raw_blocks:
-        block_content = block.strip()
-        if len(block_content) > 15:
-            cleaned_problems.append({
-                "id": prob_id,
-                "type": "short_answer",
-                "question": block_content,
-                "answer": "정답지 확인 필요",
-                "explanation": "업로드하신 원본 PDF 파일의 실제 출제 문항 본문입니다."
-            })
-            prob_id += 1
-            
-    if not cleaned_problems:
-        cleaned_problems.append({
-            "id": 1,
-            "type": "short_answer",
-            "question": full_text.strip(),
-            "answer": "정답지 확인 필요",
-            "explanation": "PDF 전체 본문 텍스트입니다."
-        })
-        
-    return cleaned_problems
-
-# 🚀 초기 로딩 시 깨진 PDF 에러 검사 추가
+# 🚀 앱 구동 시 PDF의 전체 페이지 중 무작위 5개 페이지(선택 범위)를 엄선
 is_pdf_broken = False
-if not st.session_state.problems_pool:
-    if os.path.exists(FIXED_PDF_NAME):
-        all_problems = extract_problems_strictly_from_pdf_path(FIXED_PDF_NAME)
-        if all_problems == "ERROR_CORRUPTED":
-            is_pdf_broken = True
-        else:
-            if len(all_problems) >= 5:
-                st.session_state.problems_pool = random.sample(all_problems, 5)
-            else:
-                st.session_state.problems_pool = all_problems
+total_pages_count = 0
+
+if os.path.exists(FIXED_PDF_NAME):
+    try:
+        doc = fitz.open(FIXED_PDF_NAME)
+        total_pages_count = len(doc)
+        doc.close()
+        
+        if total_pages_count > 0 and not st.session_state.problems_pool:
+            sample_size = min(5, total_pages_count)
+            st.session_state.problems_pool = random.sample(range(total_pages_count), sample_size)
             st.session_state.current_idx = 0
+    except Exception as e:
+        is_pdf_broken = True
+else:
+    is_pdf_broken = True
 
 st.sidebar.title("🎮 수매씽 랜덤 문제 만들기")
 st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
@@ -120,82 +99,79 @@ if menu == "📁 자동 문제 은행 상태":
     st.header("📁 내장 문제 은행 관리 상태")
     
     if is_pdf_broken:
-        st.error(f"❌ 깃허브에 있는 `{FIXED_PDF_NAME}` 파일이 손상되었거나 올바르지 않은 PDF 포맷입니다!")
+        st.error(f"❌ 깃허브에 있는 `{FIXED_PDF_NAME}` 파일이 없거나 손상되었습니다.")
         st.markdown("""
-        **현재 문제점:** 파일 이름은 맞지만, 내용물이 깨져있거나 업로드가 완전히 끝나기 전에 저장되었습니다.
-        
-        **👑 해결 방법:**
-        1. PC에 있는 원본 PDF 파일 용량이 0바이트나 몇 바이트 수준이 아니라, **진짜 메가바이트(MB) 단위의 정상 파일**인지 확인합니다.
-        2. 깃허브 저장소 메인에서 **`[파일 추가]` ➡️ `[파일 업로드]`**를 통해 진짜 PDF 파일을 다시 끌어다 넣고 **`Commit changes`**를 눌러주세요.
+        **해결 방법:** 용량이 제대로 차 있는 진짜 수매씽 PDF 파일을 깃허브에 `sumaessing.pdf`라는 이름으로 업로드해 주세요.
         """)
-    elif os.path.exists(FIXED_PDF_NAME):
-        st.success(f"✅ 현재 시스템에 `{FIXED_PDF_NAME}` 문제집 파일이 정상적으로 박혀있습니다!")
-        st.info("💡 앱을 켤 때마다 자동으로 문제를 엄선합니다. 다른 문제 조합으로 새로 학습하고 싶다면 아래 버튼을 누르세요.")
-        
-        if st.button("🔄 다른 5문항 새로 복제하기 (랜덤 셔플)"):
-            with st.spinner("PDF 내부 실제 문제 완벽 분석 중..."):
-                all_problems = extract_problems_strictly_from_pdf_path(FIXED_PDF_NAME)
-                if all_problems == "ERROR_CORRUPTED":
-                    st.error("앗, PDF 파일이 깨져 있어 분석할 수 없습니다.")
-                else:
-                    if len(all_problems) >= 5:
-                        st.session_state.problems_pool = random.sample(all_problems, 5)
-                    else:
-                        st.session_state.problems_pool = all_problems
-                    st.session_state.current_idx = 0
-                    st.success("🎯 새로운 무작위 5문항이 시험장에 완벽히 엄선 배치되었습니다!")
     else:
-        st.error(f"⚠️ 깃허브 저장소에 `{FIXED_PDF_NAME}` 파일이 없습니다!")
+        st.success(f"✅ 수매씽 문제집 연결 완벽 성공! (총 {total_pages_count}페이지 감지됨)")
+        st.info("💡 교재 내부의 수식과 그래프를 훼손하지 않기 위해 '원본 페이지 고화질 스캔 모드'로 작동 중입니다.")
+        
+        if st.button("🔄 다른 5개 페이지 무작위 선별 (랜덤 셔플)"):
+            if total_pages_count > 0:
+                sample_size = min(5, total_pages_count)
+                st.session_state.problems_pool = random.sample(range(total_pages_count), sample_size)
+                st.session_state.current_idx = 0
+                st.success("🎯 새로운 무작위 5개 시험 범주 페이지가 세팅되었습니다! '풀이 시험장'으로 가보세요.")
 
 elif menu == "📝 풀이 시험장":
     st.header("📝 수매씽 원본 기출 테스트 모드")
-    if is_pdf_broken:
-        st.error("⚙️ 깃허브의 PDF 파일이 손상되어 문제를 불러올 수 없습니다. '📁 자동 문제 은행 상태' 탭의 안내를 확인해 주세요.")
-    elif not st.session_state.problems_pool:
-        st.warning("시스템에 내장된 PDF 문제집을 불러오지 못했습니다. 깃허브에 파일이 있는지 확인해 주세요.")
+    
+    if is_pdf_broken or not st.session_state.problems_pool:
+        st.error("📁 '자동 문제 은행 상태' 탭에서 PDF 파일 상태를 먼저 확인해 주세요.")
     else:
         idx = st.session_state.current_idx
         pool = st.session_state.problems_pool
+        current_page = pool[idx]
         
-        st.progress((idx + 1) / len(pool), text=f"현재 진행 문항: {idx + 1} / {len(pool)}")
+        st.progress((idx + 1) / len(pool), text=f"현재 진행 페이지: {idx + 1} / {len(pool)}")
+        st.markdown(f"### **[실제 범위 기출 - {current_page + 1} 페이지]**")
         
-        q = pool[idx]
-        st.markdown(f"### **[실제 범위 문항 {idx + 1}]**")
-        st.info(q["question"])
+        # 🖼️ 현재 인덱스의 PDF 페이지를 고화질 이미지로 출력
+        with st.spinner("원본 문항 해상도 최적화 중..."):
+            img_bytes = render_pdf_page(FIXED_PDF_NAME, current_page)
         
-        user_ans = st.text_input("직접 푼 정답 또는 풀이 메모 입력:", key=f"ans_{idx}")
+        if img_bytes:
+            st.image(img_bytes, use_container_width=True)
+        else:
+            st.error("해당 페이지의 수식 이미지를 복원하는 데 실패했습니다.")
+            
+        user_ans = st.text_input("정답 입력 및 풀이 메모:", key=f"ans_{idx}")
 
-        if st.button("풀이 완료 및 기록 (오답 체크용)"):
+        if st.button("풀이 완료 및 기록"):
             st.session_state.history_stats["total"] += 1
-            if st.checkbox("이 문제를 오답노트에 보관하고 다시 풀겠습니다.", key=f"chk_{idx}"):
-                existing = next((item for item in st.session_state.wrong_notes if item["id"] == q["id"]), None)
-                if not existing:
-                    q["error_type"] = "다시 확인 필요"
-                    st.session_state.wrong_notes.append(q)
-                st.success("⚠️ 해당 원본 문제가 오답노트에 보관되었습니다.")
+            st.success("체크 완료! 아래 체크박스를 누르면 오답노트에 보관됩니다.")
+            
+        if st.checkbox("이 페이지를 오답노트에 등록하고 다시 풀겠습니다.", key=f"chk_{idx}"):
+            existing = next((item for item in st.session_state.wrong_notes if item["page"] == current_page), None)
+            if not existing:
+                st.session_state.wrong_notes.append({"id": current_page + 1, "page": current_page})
+                st.success(f"⚠️ {current_page + 1} 페이지가 오답노트에 안전하게 등록되었습니다.")
             save_to_local()
 
         st.write("")
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("⬅️ 이전 문제", disabled=(idx == 0)):
+            if st.button("⬅️ 이전 페이지", disabled=(idx == 0)):
                 st.session_state.current_idx -= 1
                 st.rerun()
         with c2:
-            if st.button("다음 문제 ➡️", disabled=(idx == len(pool) - 1)):
+            if st.button("다음 페이지 ➡️", disabled=(idx == len(pool) - 1)):
                 st.session_state.current_idx += 1
                 st.rerun()
 
 elif menu == "🔥 오답노트 관리":
     st.header("🔥 PDF 원본 오답 정복")
     if not st.session_state.wrong_notes:
-        st.success("🎉 현재 누적된 오답이 없습니다!")
+        st.success("🎉 현재 누적된 오답 페이지가 없습니다!")
     else:
         for w_idx, w_q in enumerate(st.session_state.wrong_notes):
-            with st.expander(f"⚠️ 원본 PDF 추출 문항 (ID: {w_q['id']})"):
-                st.write(w_q["question"])
-                if st.button("이 문제 완벽 마스터 (삭제)", key=f"del_w_{w_idx}"):
+            with st.expander(f"⚠️ 오답 등록 내역 ({w_q['id']} 페이지)"):
+                img_bytes = render_pdf_page(FIXED_PDF_NAME, w_q["page"])
+                if img_bytes:
+                    st.image(img_bytes, use_container_width=True)
+                if st.button("이 페이지 완벽 마스터 (삭제)", key=f"del_w_{w_idx}"):
                     st.session_state.wrong_notes.remove(w_q)
                     save_to_local()
-                    st.success("제거되었습니다.")
+                    st.success("오답노트에서 제거되었습니다.")
                     st.rerun()
