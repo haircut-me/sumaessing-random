@@ -182,7 +182,6 @@ elif menu == "🔥 오답노트 관리":
         st.success("🎉 현재 누적된 오답이 없습니다!")
     else:
         for w_idx, w_q in enumerate(st.session_state.wrong_notes):
-            with w_idx, w_q in enumerate(st.session_state.wrong_notes):
             with st.expander(f"⚠️ 원본 PDF 추출 문항 (ID: {w_q['id']})"):
                 st.write(w_q["question"])
                 if st.button("이 문제 완벽 마스터 (삭제)", key=f"del_w_{w_idx}"):
