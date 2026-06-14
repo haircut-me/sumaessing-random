@@ -1,15 +1,10 @@
+```python
 import streamlit as st
 import random
 import json
 import os
 from datetime import datetime
-
-# 🚀 수학 수식/그래프 보존을 위한 고성능 PDF 이미지 변환 라이브러리 자동 설치
-try:
-    import fitz  # PyMuPDF
-except ImportError:
-    os.system("pip install pymupdf")
-    import fitz
+import fitz  # 정식 등록을 마쳤으므로 바로 로딩합니다!
 
 SAVE_FILE = "math_pilot_solo_data.json"
 FIXED_PDF_NAME = "sumaessing.pdf"
@@ -72,7 +67,7 @@ if 'problems_pool' not in st.session_state:
 if 'current_idx' not in st.session_state:
     st.session_state.current_idx = 0
 
-# 🚀 앱 구동 시 PDF의 전체 페이지 중 무작위 5개 페이지(선택 범위)를 엄선
+# 🚀 앱 구동 시 PDF의 전체 페이지 중 무작위 5개 페이지를 엄선
 is_pdf_broken = False
 total_pages_count = 0
 
@@ -127,7 +122,7 @@ elif menu == "📝 풀이 시험장":
         st.progress((idx + 1) / len(pool), text=f"현재 진행 페이지: {idx + 1} / {len(pool)}")
         st.markdown(f"### **[실제 범위 기출 - {current_page + 1} 페이지]**")
         
-        # 🖼️ 현재 인덱스의 PDF 페이지를 고화질 이미지로 출력
+        # 🖼 * 현재 인덱스의 PDF 페이지를 고화질 이미지로 출력
         with st.spinner("원본 문항 해상도 최적화 중..."):
             img_bytes = render_pdf_page(FIXED_PDF_NAME, current_page)
         
@@ -152,7 +147,7 @@ elif menu == "📝 풀이 시험장":
         st.write("")
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("⬅️ 이전 페이지", disabled=(idx == 0)):
+            if st.button("⬅ * 이전 페이지", disabled=(idx == 0)):
                 st.session_state.current_idx -= 1
                 st.rerun()
         with c2:
