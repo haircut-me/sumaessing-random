@@ -4,17 +4,15 @@ import json
 import os
 import re
 from datetime import datetime
-# PDF 텍스트 추출을 위한 라이브러리 (배포 환경에서 자동 작동)
 try:
     import pypdf
 except ImportError:
     os.system("pip install pypdf")
     import pypdf
 
-# ==========================================
-# [데이터 로컬 저장 및 자동 로드 기능]
-# ==========================================
 SAVE_FILE = "math_pilot_solo_data.json"
+# 🎯 고정으로 읽어올 PDF 파일 이름 설정
+FIXED_PDF_NAME = "sumaessing.pdf"
 
 def save_to_local():
     data = {
@@ -38,10 +36,8 @@ def load_from_local():
         except:
             pass
 
-# ==========================================
-# [앱 초기화 상태 빌드]
-# ==========================================
-st.set_page_config(page_title="MathPilot Solo", layout="wide")
+# 🎯 간판 이름 반영: 수매씽 랜덤 문제 만들기
+st.set_page_config(page_title="수매씽 랜덤 문제 만들기", layout="wide")
 
 if 'initialized' not in st.session_state:
     st.session_state.wrong_notes = []
@@ -65,39 +61,31 @@ if 'problems_pool' not in st.session_state:
 if 'current_idx' not in st.session_state:
     st.session_state.current_idx = 0
 
-# ==========================================
-# [🚨 엄격 규칙: PDF 원본에서만 문제 분리 추출]
-# ==========================================
-def extract_problems_strictly_from_pdf(uploaded_file):
-    """AI의 임의 창작을 전면 차단하고, 업로드된 PDF 본문 텍스트만 100% 슬라이싱하여 추출합니다."""
-    reader = pypdf.PdfReader(uploaded_file)
+# 🛠️ 경로로 직접 PDF를 읽어들이도록 함수 개선
+def extract_problems_strictly_from_pdf_path(file_path):
+    reader = pypdf.PdfReader(file_path)
     full_text = ""
     for page in reader.pages:
         text = page.extract_text()
         if text:
             full_text += text + "\n"
     
-    # 일반적인 수학 문제 번호 패턴(예: 1., 01., [문항 1] 등)을 기준으로 문장을 쪼갭니다.
     raw_blocks = re.split(r'(?=\b\d{1,2}\s*[.\],、])|(?=\[문항\s*\d{1,2}\])', full_text)
-    
     cleaned_problems = []
     prob_id = 1
     
     for block in raw_blocks:
         block_content = block.strip()
-        # 글자 수가 지나치게 적은 공백 블록은 제외
         if len(block_content) > 15:
-            # 주관식 단답형을 기본 구조로 하되, 원본 본문을 단 1자도 훼손하지 않고 그대로 투입
             cleaned_problems.append({
                 "id": prob_id,
                 "type": "short_answer",
                 "question": block_content,
-                "answer": "정답지 확인 필요",  # 원본 PDF 텍스트 기반이므로 본인이 푼 정답과 대조용
+                "answer": "정답지 확인 필요",
                 "explanation": "업로드하신 원본 PDF 파일의 실제 출제 문항 본문입니다."
             })
             prob_id += 1
             
-    # 만약 정규식 분리가 모호하여 블록이 안 나눠진 경우 전체 텍스트를 통으로 보존
     if not cleaned_problems:
         cleaned_problems.append({
             "id": 1,
@@ -109,39 +97,50 @@ def extract_problems_strictly_from_pdf(uploaded_file):
         
     return cleaned_problems
 
-# ==========================================
-# [사용자 UI 및 사이드바 대시보드]
-# ==========================================
-st.sidebar.title("🎮 MathPilot Solo")
-st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
-menu = st.sidebar.radio("메뉴 이동", ["📁 시험 범위 업로드", "📝 풀이 시험장", "🔥 오답노트 관리"])
+# 🚀 앱 시작하자마자 내장된 PDF를 자동으로 분석하여 문제 배치하는 로직
+if not st.session_state.problems_pool:
+    if os.path.exists(FIXED_PDF_NAME):
+        all_problems = extract_problems_strictly_from_pdf_path(FIXED_PDF_NAME)
+        if len(all_problems) >= 5:
+            st.session_state.problems_pool = random.sample(all_problems, 5)
+        else:
+            st.session_state.problems_pool = all_problems
+        st.session_state.current_idx = 0
 
-# [메뉴 1] 파일 업로드
-if menu == "📁 시험 범위 업로드":
-    st.header("📁 시험 범위 원본 PDF 등록")
-    st.info("⚠️ 외부 문제는 단 1문항도 섞이지 않으며, 오직 유저님이 업로드한 PDF 내부 문항만 추출됩니다.")
+# 🎯 사이드바 이름 반영: 수매씽 랜덤 문제 만들기
+st.sidebar.title("🎮 수매씽 랜덤 문제 만들기")
+st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
+menu = st.sidebar.radio("메뉴 이동", ["📁 자동 문제 은행 상태", "📝 풀이 시험장", "🔥 오답노트 관리"])
+
+if menu == "📁 자동 문제 은행 상태":
+    st.header("📁 내장 문제 은행 관리 상태")
     
-    uploaded_file = st.file_uploader("학교/학원 시험범위 원본 PDF 파일을 업로드하세요.", type=["pdf"])
-    if uploaded_file is not None:
-        if st.button("🚀 원본 문항 동기화 및 5문항 랜덤 뽑기"):
+    if os.path.exists(FIXED_PDF_NAME):
+        st.success(f"✅ 현재 시스템에 `{FIXED_PDF_NAME}` 문제집 파일이 정상적으로 박혀있습니다!")
+        st.info("💡 앱을 켤 때마다 자동으로 문제를 엄선합니다. 다른 문제 조합으로 새로 학습하고 싶다면 아래 버튼을 누르세요.")
+        
+        if st.button("🔄 다른 5문항 새로 복제하기 (랜덤 셔플)"):
             with st.spinner("PDF 내부 실제 문제 완벽 분석 중..."):
-                all_problems = extract_problems_strictly_from_pdf(uploaded_file)
-                
+                all_problems = extract_problems_strictly_from_pdf_path(FIXED_PDF_NAME)
                 if len(all_problems) >= 5:
-                    # 🎯 유저님 요청 반영: 외부 문제 절대 없이 원본 안에서만 딱 5개 랜덤 추출
                     st.session_state.problems_pool = random.sample(all_problems, 5)
                 else:
                     st.session_state.problems_pool = all_problems
-                    
                 st.session_state.current_idx = 0
-                st.success(f"✅ 동기화 완료! 업로드한 PDF 원본 문항 중 고유 문제 5개가 완전 랜덤으로 엄선 배치되었습니다.")
+                st.success("🎯 새로운 무작위 5문항이 시험장에 완벽히 엄선 배치되었습니다! '풀이 시험장'으로 이동해 보세요.")
+    else:
+        st.error(f"⚠️ 깃허브 저장소에 `{FIXED_PDF_NAME}` 파일이 없습니다!")
+        st.markdown("""
+        **해결 방법:**
+        1. 사용하시는 수매씽 PDF 파일 이름을 영어 소문자 **`sumaessing.pdf`** 로 바꿉니다.
+        2. 깃허브 저장소(`haircut-me/sumaessing-random`)에 이 PDF 파일을 다시 업로드해 줍니다.
+        """)
 
-# [메뉴 2] 풀이 시험장
 elif menu == "📝 풀이 시험장":
-    st.header("📝 MathPilot 원본 기출 테스트 모드")
+    st.header("📝 수매씽 원본 기출 테스트 모드")
     
     if not st.session_state.problems_pool:
-        st.warning("먼저 '📁 시험 범위 업로드' 메뉴에서 실제 PDF 파일을 등록해 주세요!")
+        st.warning("시스템에 내장된 PDF 문제집을 불러오지 못했습니다. 깃허브에 파일이 있는지 확인해 주세요.")
     else:
         idx = st.session_state.current_idx
         pool = st.session_state.problems_pool
@@ -150,8 +149,6 @@ elif menu == "📝 풀이 시험장":
         
         q = pool[idx]
         st.markdown(f"### **[실제 범위 문항 {idx + 1}]**")
-        
-        # 원본 PDF 텍스트 그대로 노출
         st.info(q["question"])
         
         user_ans = st.text_input("직접 푼 정답 또는 풀이 메모 입력:", key=f"ans_{idx}")
@@ -179,13 +176,13 @@ elif menu == "📝 풀이 시험장":
                 st.session_state.current_idx += 1
                 st.rerun()
 
-# [메뉴 3] 오답노트 관리
 elif menu == "🔥 오답노트 관리":
     st.header("🔥 PDF 원본 오답 정복")
     if not st.session_state.wrong_notes:
         st.success("🎉 현재 누적된 오답이 없습니다!")
     else:
         for w_idx, w_q in enumerate(st.session_state.wrong_notes):
+            with w_idx, w_q in enumerate(st.session_state.wrong_notes):
             with st.expander(f"⚠️ 원본 PDF 추출 문항 (ID: {w_q['id']})"):
                 st.write(w_q["question"])
                 if st.button("이 문제 완벽 마스터 (삭제)", key=f"del_w_{w_idx}"):
