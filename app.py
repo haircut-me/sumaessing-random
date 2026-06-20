@@ -3,10 +3,11 @@ import random
 import json
 import os
 from datetime import datetime
-import fitz  # PDF 페이지를 고화질 이미지로 변환해서 보여주는 라이브러리
+import fitz  # 문제지와 정답지 PDF를 모두 처리하는 라이브러리
 
 SAVE_FILE = "math_pilot_solo_data.json"
 FIXED_PDF_NAME = "sumaessing.pdf"
+ANSWER_PDF_NAME = "answer.pdf"  # 👈 새로 추가된 정답지 파일명
 
 def save_to_local():
     data = {
@@ -49,29 +50,31 @@ if 'initialized' not in st.session_state:
     st.session_state.initialized = True
     save_to_local()
 
-# 🚀 무한 랜덤 출제를 위한 세션 변수 설정
 if 'current_target_page' not in st.session_state:
     st.session_state.current_target_page = None
 if 'solved_count' not in st.session_state:
     st.session_state.solved_count = 0
+if 'scoring_result' not in st.session_state:
+    st.session_state.scoring_result = None
 
 is_pdf_broken = False
 total_pages_count = 0
 
-# 📁 깃허브에 올라온 sumaessing.pdf를 읽어서 전체 페이지 수 확인
+# 문제지 PDF 상태 체크
 if os.path.exists(FIXED_PDF_NAME):
     try:
         doc = fitz.open(FIXED_PDF_NAME)
         total_pages_count = len(doc)
         doc.close()
-        
-        # 첫 실행 시 무작위로 한 페이지를 타겟으로 지정
         if total_pages_count > 0 and st.session_state.current_target_page is None:
             st.session_state.current_target_page = random.randint(1, total_pages_count)
     except:
         is_pdf_broken = True
 else:
     is_pdf_broken = True
+
+# 정답지 PDF 존재 여부 체크
+has_answer_pdf = os.path.exists(ANSWER_PDF_NAME)
 
 st.sidebar.title("🎮 수매씽 무한 랜덤 문제 은행")
 st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
@@ -82,11 +85,14 @@ if menu == "📁 자동 문제 은행 상태":
     st.header("📁 내장 문제 은행 관리 상태")
     if is_pdf_broken:
         st.error(f"❌ 깃허브에 `{FIXED_PDF_NAME}` 파일이 없거나 올바르지 않습니다.")
-        st.markdown("**해결 방법:** 직접 자르고 편집하신 PDF 파일명을 정확히 `sumaessing.pdf`로 변경해서 깃허브에 업로드해 주세요!")
     else:
-        st.success(f"✅ 수매씽 편집본 교재 연결 성공! (총 {total_pages_count}페이지 감지 완료)")
-        st.info("💡 유저님이 편집하신 페이지가 통째로 고화질 스캔 이미지 형태로 화면에 출제됩니다.")
-        st.info("🔄 '무한 랜덤 모드'가 켜져 있어, 하단 버튼을 누르면 제한 없이 다음 무작위 페이지가 계속 나옵니다.")
+        st.success(f"✅ 수매씽 문제집 연결 성공! (총 {total_pages_count}페이지)")
+        
+    if has_answer_pdf:
+        st.success("✅ 자동 채점용 정답지(answer.pdf) 연결 성공!")
+        st.info("💡 이제 유저님이 정답을 입력하면, 정답지 PDF 안에서 똑같은 페이지의 답을 찾아 자동으로 채점합니다.")
+    else:
+        st.warning("⚠️ 깃허브에 `answer.pdf` 파일이 없습니다. 파일을 올려주셔야 자동 채점이 작동합니다!")
 
 elif menu == "📝 풀이 시험장":
     st.header("📝 수매씽 무한 랜덤 시험장")
@@ -97,43 +103,77 @@ elif menu == "📝 풀이 시험장":
         target_page = st.session_state.current_target_page
         st.markdown(f"### 🎯 **현재 랜덤 출제 범위:** [ 원본 {target_page} 페이지 ]")
         
-        # 📸 PDF의 해당 페이지를 통째로 선명한 이미지(PNG)로 렌더링하여 화면에 출력
+        # 📸 문제지 PDF의 해당 페이지를 이미지로 출력
         try:
             doc = fitz.open(FIXED_PDF_NAME)
-            page = doc.load_page(target_page - 1)  # 0부터 시작하므로 -1
-            
-            # 선명도를 높이기 위한 2배 줌 설정
+            page = doc.load_page(target_page - 1)
             zoom = 2.0
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat)
-            img_bytes = pix.tobytes("png")
-            
-            # 🖼️ 유저님이 잘라두신 페이지를 화면에 그대로 통째로 노출!
-            st.image(img_bytes, caption=f"수매씽 {target_page}페이지", use_container_width=True)
+            st.image(pix.tobytes("png"), caption=f"수매씽 {target_page}페이지 문제", use_container_width=True)
             doc.close()
         except Exception as e:
             st.error(f"❌ 페이지 이미지를 불러오는 중 오류가 발생했습니다: {e}")
 
         st.write("")
-        user_ans = st.text_input("직접 푼 정답 또는 풀이 메모 입력:", key=f"ans_{target_page}")
+        
+        # ✍️ 유저 정답 입력창
+        user_ans = st.text_input("여기에 정답을 입력하세요 (예: 3 또는 24):", key=f"ans_{target_page}").strip()
+
+        # ⭕ ❌ 결과 애니메이션 공간
+        if st.session_state.scoring_result is not None:
+            if st.session_state.scoring_result == "정답":
+                st.markdown("<div style='text-align:center;'><span style='font-size:120px; color:#FF4B4B;'>⭕</span><h3 style='color:#FF4B4B;'>정답입니다! 🎉</h3></div>", unsafe_allowed_html=True)
+            elif st.session_state.scoring_result == "오답":
+                st.markdown("<div style='text-align:center;'><span style='font-size:120px; color:#FF4B4B;'>❌</span><h3 style='color:#FF4B4B;'>아쉬워요! 오답노트에 보관되었습니다. 💪</h3></div>", unsafe_allowed_html=True)
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("풀이 완료 기록"):
-                st.session_state.history_stats["total"] += 1
-                st.success("체크 완료! 오늘의 풀이 카운트가 올라갔습니다.")
+            if st.button("💯 정답 제출 및 실시간 채점", use_container_width=True):
+                if not has_answer_pdf:
+                    st.error("⚠️ 깃허브에 `answer.pdf` 정답지 파일이 없어 채점할 수 없습니다.")
+                elif not user_ans:
+                    st.warning("⚠️ 정답을 먼저 입력해 주세요!")
+                else:
+                    # 🔍 정답지 PDF에서 해당 페이지의 텍스트를 자동 추출하여 매칭
+                    try:
+                        ans_doc = fitz.open(ANSWER_PDF_NAME)
+                        # 문제지와 정답지의 페이지 수가 1:1로 매칭된다고 가정 (target_page - 1)
+                        if (target_page - 1) < len(ans_doc):
+                            ans_page = ans_doc.load_page(target_page - 1)
+                            ans_text = ans_page.get_text("text").strip()
+                            ans_doc.close()
+                            
+                            # 정답지 텍스트 안에 유저가 입력한 정답이 들어있는지 똑똑하게 비교
+                            if user_ans in ans_text:
+                                st.session_state.scoring_result = "정답"
+                                st.session_state.history_stats["correct"] += 1
+                                st.session_state.history_stats["total"] += 1
+                                st.rerun()
+                            else:
+                                st.session_state.scoring_result = "오답"
+                                st.session_state.history_stats["total"] += 1
+                                if target_page not in st.session_state.wrong_notes:
+                                    st.session_state.wrong_notes.append(target_page)
+                                save_to_local()
+                                st.rerun()
+                        else:
+                            st.error(f"❌ 정답지 PDF에 {target_page}페이지가 존재하지 않습니다.")
+                            ans_doc.close()
+                    except Exception as e:
+                        st.error(f" 정답지를 읽는 도중 오류가 발생했습니다: {e}")
+                    
         with c2:
-            if st.checkbox("이 페이지를 오답노트에 보관하고 나중에 다시 풀겠습니다.", key=f"chk_{target_page}"):
-                if target_page not in st.session_state.wrong_notes:
-                    st.session_state.wrong_notes.append(target_page)
-                    st.success(f"⚠️ {target_page} 페이지가 오답노트에 안전하게 보관되었습니다.")
-                save_to_local()
+            if st.button("이 문제는 넘어가기 (패스)", use_container_width=True):
+                st.session_state.scoring_result = None
+                st.session_state.current_target_page = random.randint(1, total_pages_count)
+                st.rerun()
 
         st.write("---")
-        # ➡️ 누르면 다음 무작위 페이지가 끊임없이 나오는 마법의 버튼
         if st.button("다음 랜덤 문제 뽑기 ➡️", use_container_width=True):
             if total_pages_count > 0:
                 st.session_state.solved_count += 1
+                st.session_state.scoring_result = None
                 st.session_state.current_target_page = random.randint(1, total_pages_count)
                 st.rerun()
 
@@ -145,8 +185,6 @@ elif menu == "🔥 오답노트 관리":
         sorted_notes = sorted(st.session_state.wrong_notes)
         for w_page in sorted_notes:
             st.warning(f"📋 복습 범위: **{w_page} 페이지**")
-            
-            # 오답노트에서도 유저님이 잘라두신 해당 페이지를 그대로 보면서 복습
             try:
                 doc = fitz.open(FIXED_PDF_NAME)
                 page = doc.load_page(w_page - 1)
