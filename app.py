@@ -88,9 +88,9 @@ if menu == "📁 자동 문제 은행 상태":
         st.success(f"✅ 수매씽 문제집 연결 성공! (총 {total_pages_count}페이지)")
         
     if has_answer_pdf:
-        st.success("✅ 스마트 AI 채점용 정답지(answer.pdf) 연결 성공!")
+        st.success("✅ 스마트 AI 검색형 정답지(answer.pdf) 연결 성공!")
     else:
-        st.warning("⚠️ 깃허브에 자동 채점용 `answer.pdf` 파일이 아직 보이지 않습니다. 정답지 파일을 레포지토리에 추가하시면 자동 채점 기능이 활성화됩니다!")
+        st.warning("⚠️ 깃허브에 자동 채점용 `answer.pdf` 파일이 아직 보이지 않습니다.")
 
 elif menu == "📝 풀이 시험장":
     st.header("📝 수매씽 무한 랜덤 시험장")
@@ -116,14 +116,13 @@ elif menu == "📝 풀이 시험장":
         
         user_ans = st.text_input("여기에 정답을 입력하세요 (예: 3 또는 24):", key=f"ans_{target_page}").strip()
 
-        # 충돌을 일으키던 복잡한 HTML 제거 후 안전한 스트림릿 표준 컴포넌트로 전면 교체
         if st.session_state.scoring_result is not None:
             if st.session_state.scoring_result == "정답":
                 st.success("🎉 정답입니다! 아주 잘하셨어요!")
             elif st.session_state.scoring_result == "오답":
                 st.error("❌ 아쉬워요! 틀린 풀이이거나 다른 답입니다. 오답노트에 보관되었습니다.")
             elif st.session_state.scoring_result == "탐색실패":
-                st.info("ℹ️ 정답지 전체에서 해당 페이지 해설 단락을 명확히 찾지 못했습니다. 오른쪽 '패스' 버튼을 눌러주세요.")
+                st.info("ℹ️ 정답지에서 해당 페이지 해설 구역을 찾지 못했습니다. 우측 패스 버튼을 누르거나 직접 채점 후 넘어가 주세요.")
 
         c1, c2 = st.columns(2)
         with c1:
@@ -138,6 +137,7 @@ elif menu == "📝 풀이 시험장":
                         found_target_zone = False
                         full_matched_text = ""
                         
+                        # 🎯 정답지 전체 쪽을 돌며 현재 '문제 페이지 번호'가 적힌 구역을 검색합니다.
                         page_pattern = str(target_page)
                         for p_idx in range(len(ans_doc)):
                             page_content = ans_doc[p_idx].get_text("text")
@@ -211,4 +211,4 @@ elif menu == "🔥 오답노트 관리":
                 save_to_local()
                 st.success("제거되었습니다.")
                 st.rerun()
-            st.write("---")
+            st.write("---")    
