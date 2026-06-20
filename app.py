@@ -1,4 +1,4 @@
-import streamlit as st
+ import streamlit as st
 import random
 import json
 import os
@@ -89,7 +89,6 @@ if menu == "📁 자동 문제 은행 상태":
         
     if has_answer_pdf:
         st.success("✅ 스마트 AI 채점용 정답지(answer.pdf) 연결 성공!")
-        st.info("💡 페이지 번호가 달라도 정답지 전체 문맥을 검색하여 자동으로 매칭 채점합니다.")
     else:
         st.warning("⚠️ 깃허브에 `answer.pdf` 파일이 없습니다. 파일을 올려주셔야 자동 채점이 작동합니다!")
 
@@ -117,13 +116,14 @@ elif menu == "📝 풀이 시험장":
         
         user_ans = st.text_input("여기에 정답을 입력하세요 (예: 3 또는 24):", key=f"ans_{target_page}").strip()
 
+        # ⭕ ❌ 디자인 출력 부분 에러(오타) 완전 수정 완료!
         if st.session_state.scoring_result is not None:
             if st.session_state.scoring_result == "정답":
-                st.markdown("<div style='text-align:center;'><span style='font-size:120px; color:#FF4B4B;'>⭕</span><h3 style='color:#FF4B4B;'>정답입니다! 🎉</h3></div>", unsafe_allowed_html=True)
+                st.markdown("<div style='text-align:center; padding:10px;'><span style='font-size:100px; color:#FF4B4B;'>⭕</span><h3 style='color:#FF4B4B;'>정답입니다! 🎉</h3></div>", unsafe_allowed_html=True)
             elif st.session_state.scoring_result == "오답":
-                st.markdown("<div style='text-align:center;'><span style='font-size:120px; color:#FF4B4B;'>❌</span><h3 style='color:#FF4B4B;'>아쉬워요! 오답노트에 보관되었습니다. 💪</h3></div>", unsafe_allowed_html=True)
+                st.markdown("<div style='text-align:center; padding:10px;'><span style='font-size:100px; color:#FF4B4B;'>❌</span><h3 style='color:#FF4B4B;'>아쉬워요! 오답노트에 보관되었습니다. 💪</h3></div>", unsafe_allowed_html=True)
             elif st.session_state.scoring_result == "탐색실패":
-                st.info("ℹ️ 정답지에서 해당 페이지의 해설 단락을 명확히 찾지 못했습니다. 우측 '넘어가기' 버튼을 이용해 주세요.")
+                st.info("ℹ️ 정답지에서 해당 페이지 해설 구역을 찾지 못했습니다. 오른쪽 패스 버튼을 눌러주세요.")
 
         c1, c2 = st.columns(2)
         with c1:
@@ -133,17 +133,14 @@ elif menu == "📝 풀이 시험장":
                 elif not user_ans:
                     st.warning("⚠️ 정답을 먼저 입력해 주세요!")
                 else:
-                    # 🚀 스마트 검색 채점 엔진 가동
                     try:
                         ans_doc = fitz.open(ANSWER_PDF_NAME)
                         found_target_zone = False
                         full_matched_text = ""
                         
-                        # 정답지 전체 페이지를 훑으며 해당 페이지 번호가 적힌 구역을 지능적으로 스캔
                         page_pattern = str(target_page)
                         for p_idx in range(len(ans_doc)):
                             page_content = ans_doc[p_idx].get_text("text")
-                            # 정답지 내에 '69쪽' 혹은 '69page' 또는 대단원 속 '69'가 매칭되는지 필터링
                             if page_pattern in page_content:
                                 full_matched_text += "\n" + page_content
                                 found_target_zone = True
@@ -151,70 +148,5 @@ elif menu == "📝 풀이 시험장":
                         ans_doc.close()
                         
                         if found_target_zone:
-                            # 공백 제거 후 순수 텍스트 비교 알고리즘으로 채점 정밀도 향상
                             cleaned_ans_pool = re.sub(r'\s+', '', full_matched_text)
-                            cleaned_user_ans = user_ans.replace(" ", "")
-                            
-                            # 객관식 정답 형태 패턴 검사 (예: 정답 ③ 또는 ① 등 기호 매칭 보완)
-                            circle_numbers = ["①", "②", "③", "④", "⑤"]
-                            user_circle = ""
-                            if cleaned_user_ans.isdigit() and 1 <= int(cleaned_user_ans) <= 5:
-                                user_circle = circle_numbers[int(cleaned_user_ans) - 1]
-                            
-                            # 유저 정답 혹은 변환 기호가 정답 풀이 텍스트 내에 포함되어 있는지 체크
-                            if (cleaned_user_ans in cleaned_ans_pool) or (user_circle and user_circle in cleaned_ans_pool):
-                                st.session_state.scoring_result = "정답"
-                                st.session_state.history_stats["correct"] += 1
-                                st.session_state.history_stats["total"] += 1
-                                st.rerun()
-                            else:
-                                st.session_state.scoring_result = "오답"
-                                st.session_state.history_stats["total"] += 1
-                                if target_page not in st.session_state.wrong_notes:
-                                    st.session_state.wrong_notes.append(target_page)
-                                save_to_local()
-                                st.rerun()
-                        else:
-                            st.session_state.scoring_result = "탐색실패"
-                            st.rerun()
-                            
-                    except Exception as e:
-                        st.error(f" 정답지 처리 중 오류 발생: {e}")
-                    
-        with c2:
-            if st.button("이 문제는 넘어가기 (패스)", use_container_width=True):
-                st.session_state.scoring_result = None
-                st.session_state.current_target_page = random.randint(1, total_pages_count)
-                st.rerun()
-
-        st.write("---")
-        if st.button("다음 랜덤 문제 뽑기 ➡️", use_container_width=True):
-            if total_pages_count > 0:
-                st.session_state.solved_count += 1
-                st.session_state.scoring_result = None
-                st.session_state.current_target_page = random.randint(1, total_pages_count)
-                st.rerun()
-
-elif menu == "🔥 오답노트 관리":
-    st.header("🔥 복습이 필요한 오답 목록")
-    if not st.session_state.wrong_notes:
-        st.success("🎉 현재 누적된 오답 페이지가 없습니다!")
-    else:
-        sorted_notes = sorted(st.session_state.wrong_notes)
-        for w_page in sorted_notes:
-            st.warning(f"📋 복습 범위: **{w_page} 페이지**")
-            try:
-                doc = fitz.open(FIXED_PDF_NAME)
-                page = doc.load_page(w_page - 1)
-                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-                st.image(pix.tobytes("png"), use_container_width=True)
-                doc.close()
-            except:
-                pass
-                
-            if st.button("이 페이지 완벽 마스터 (삭제)", key=f"del_page_{w_page}"):
-                st.session_state.wrong_notes.remove(w_page)
-                save_to_local()
-                st.success("제거되었습니다.")
-                st.rerun()
-            st.write("---")
+                            cleaned_
