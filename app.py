@@ -88,7 +88,7 @@ if menu == "📁 자동 문제 은행 상태":
         st.success(f"✅ 수매씽 문제집 연결 성공! (총 {total_pages_count}페이지)")
         
     if has_answer_pdf:
-        st.success("✅ 초정밀 정답 매칭형 정답지(answer.pdf) 연결 성공!")
+        st.success("✅ 실시간 자동 채점 정답지(answer.pdf) 연결 성공!")
     else:
         st.warning("⚠️ 깃허브에 자동 채점용 `answer.pdf` 파일이 아직 보이지 않습니다.")
 
@@ -116,6 +116,7 @@ elif menu == "📝 풀이 시험장":
         
         user_ans = st.text_input("여기에 정답을 입력하세요 (예: 3 또는 24):", key=f"ans_{target_page}").strip()
 
+        # 🎯 화면에 채점 결과 뿌려주기
         if st.session_state.scoring_result is not None:
             if st.session_state.scoring_result == "정답":
                 st.success("🎉 정답입니다! 아주 잘하셨어요!")
@@ -133,6 +134,9 @@ elif menu == "📝 풀이 시험장":
                     st.warning("⚠️ 정답 칸에 정답을 먼저 적어주세요!")
                 else:
                     try:
+                        # 채점 시작할 때 결과 변수 상태를 완전히 무조건 초기화
+                        st.session_state.scoring_result = None
+                        
                         ans_doc = fitz.open(ANSWER_PDF_NAME)
                         cleaned_user_ans = user_ans.replace(" ", "")
                         
@@ -144,7 +148,7 @@ elif menu == "📝 풀이 시험장":
                         is_correct = False
                         found_page_zone = False
                         
-                        # 🎯 1단계: 빠른 정답표 코너 매칭 기법 고도화
+                        # 🔍 1단계: 빠른 정답표 전용 정밀 바인딩
                         for p_idx in range(len(ans_doc)):
                             raw_text = ans_doc[p_idx].get_text("text")
                             if "정답" in raw_text or "바른" in raw_text:
@@ -154,20 +158,16 @@ elif menu == "📝 풀이 시험장":
                                 page_pos = combined_text.find(str(target_page))
                                 if page_pos != -1:
                                     found_page_zone = True
-                                    snippet = combined_text[page_pos:page_pos+15]
+                                    snippet = combined_text[page_pos:page_pos+12] # 타겟 범위를 확 줄여 엉뚱한 숫자 매칭 원천 차단
                                     
-                                    # 앞뒤로 문장 경계를 타이트하게 묶어 비교
-                                    if user_circle and user_circle in snippet:
+                                    if user_circle and user_circle in snippet[:5]:
                                         is_correct = True
                                         break
-                                    # 일반 숫자인 경우, 숫자 뒤에 다른 연산기호 없이 독립된 구조인지 체크
-                                    if cleaned_user_ans in snippet:
-                                        # 정답 유효 패턴 정규식 검증
-                                        if re.search(r'\b' + re.escape(cleaned_user_ans) + r'\b', snippet) or (cleaned_user_ans in snippet[:5]):
-                                            is_correct = True
-                                            break
+                                    if cleaned_user_ans in snippet[:5]:
+                                        is_correct = True
+                                        break
                         
-                        # 🎯 2단계: 줄글 해설지 단락 정밀 정규식(Regex) 타겟 바인딩
+                        # 🔍 2단계: 본문 해설지 구역 철저 매칭 정규식
                         if not is_correct:
                             for p_idx in range(len(ans_doc)):
                                 raw_text = ans_doc[p_idx].get_text("text")
@@ -176,17 +176,17 @@ elif menu == "📝 풀이 시험장":
                                     lines = raw_text.split("\n")
                                     
                                     for line in lines:
-                                        # 수식 중간에 들어간 숫자가 걸러지도록 문장 패턴 정리
-                                        if "정답" in line or "따라서" in line or "즉" in line:
-                                            # 선지 기호 정밀 비교
-                                            if user_circle and user_circle in line:
+                                        # 해설 줄글 내부에서 정답 선언 지점 포커싱
+                                        if any(k in line for k in ["정답", "따라서", "즉", "🛒"]):
+                                            cleaned_line = line.replace(" ", "")
+                                            
+                                            if user_circle and user_circle in cleaned_line:
                                                 is_correct = True
                                                 break
                                             
-                                            # 숫자가 단독 컴포넌트로 완벽하게 일치하는지 정규식 바인딩 (\b 검사)
-                                            # 예: "정답은 4" 일 때 수식 내의 "4x" 등은 오답 처리하기 위함
-                                            numbers_in_line = re.findall(r'\d+', line)
-                                            if cleaned_user_ans in numbers_in_line:
+                                            # 단답형 숫자의 경우 완벽히 똑같이 독립된 숫자인지 체크
+                                            extracted_numbers = re.findall(r'\d+', line)
+                                            if cleaned_user_ans in extracted_numbers:
                                                 is_correct = True
                                                 break
                                 if is_correct:
@@ -194,21 +194,21 @@ elif menu == "📝 풀이 시험장":
                                     
                         ans_doc.close()
                         
+                        # 채점 결과 최종 강제 업데이트
                         if is_correct:
                             st.session_state.scoring_result = "정답"
                             st.session_state.history_stats["correct"] += 1
                             st.session_state.history_stats["total"] += 1
-                            st.rerun()
                         elif found_page_zone:
                             st.session_state.scoring_result = "오답"
                             st.session_state.history_stats["total"] += 1
                             if target_page not in st.session_state.wrong_notes:
                                 st.session_state.wrong_notes.append(target_page)
                             save_to_local()
-                            st.rerun()
                         else:
                             st.session_state.scoring_result = "탐색실패"
-                            st.rerun()
+                            
+                        st.rerun()
                             
                     except Exception as e:
                         st.error(f" 정답지 파일 검증 오류: {e}")
