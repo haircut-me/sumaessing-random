@@ -135,4 +135,30 @@ elif menu == "📝 풀이 시험장":
                 if not has_answer_pdf:
                     st.error("⚠️ 깃허브 저장소에 answer.pdf 파일이 필요합니다.")
                 elif not user_ans:
-                    st.warning("⚠️ 정답 칸에 먼저 답안을 작성해 주세요
+                    st.warning("⚠️ 정답 칸에 먼저 답안을 작성해 주세요!")
+                else:
+                    st.session_state.show_answer_trigger = True
+                    
+                    best_idx = 0
+                    try:
+                        ans_doc = fitz.open(ANSWER_PDF_NAME)
+                        page_pattern = str(target_page)
+                        for p_idx in range(len(ans_doc)):
+                            if page_pattern in ans_doc[p_idx].get_text("text"):
+                                best_idx = p_idx
+                                break
+                        ans_doc.close()
+                    except:
+                        pass
+                    
+                    st.session_state.manual_answer_page_idx = best_idx
+                    st.rerun()
+                    
+        with c2:
+            if st.button("이 문제는 패스하고 다른 문제 뽑기 ➡️", use_container_width=True):
+                st.session_state.show_answer_trigger = False
+                st.session_state.user_answer_text = ""
+                st.session_state.current_target_page = random.randint(1, total_pages_count)
+                st.rerun()
+
+        if st.session_
