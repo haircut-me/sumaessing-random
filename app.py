@@ -101,27 +101,24 @@ elif menu == "📝 풀이 시험장":
     else:
         target_page = st.session_state.current_target_page
         
-        # 🎉 커다란 카드 형태로 풀이할 페이지 번호만 깔끔하게 노출!
-        st.markdown(f"""
-        <div style="background-color:#F0F2F6; padding:30px; border-radius:15px; text-align:center; margin-bottom:20px;">
-            <h2 style="color:#FF4B4B; margin:0;">🎯 오늘의 미션 페이지</h2>
-            <h1 style="font-size:80px; margin:10px 0; color:#1C1D1F;">{target_page} <span style="font-size:30px;">Page</span></h1>
-            <p style="color:#555; margin:0;">교재나 태블릿에서 위 페이지를 펼쳐서 문제를 풀어보세요!</p>
-        </div>
-        """, unsafe_allowed_html=True)
+        # 🎉 튼튼하고 직관적인 디자인으로 미션 페이지 노출 (에러 방지용 안전 문법)
+        st.info("💡 아래 가이드에 따라 교재를 펼쳐 문제를 풀어보세요!")
+        
+        st.markdown("### 🎯 오늘의 미션 범위")
+        st.subheader(f"📖 수매씽 원본 교재 [ {target_page} 페이지 ] 를 펼쳐주세요!")
             
         user_ans = st.text_input("메모 또는 정답 기록 채널:", key=f"ans_{target_page}")
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("풀이 완료 및 오답 체크"):
+            if st.button("풀이 완료 기록"):
                 st.session_state.history_stats["total"] += 1
-                st.success("풀이 완료가 기록되었습니다!")
+                st.success("풀이 완료가 대시보드에 기록되었습니다!")
         with c2:
             if st.checkbox("이 페이지를 오답노트에 등록하고 나중에 다시 풀겠습니다.", key=f"chk_{target_page}"):
                 if target_page not in st.session_state.wrong_notes:
                     st.session_state.wrong_notes.append(target_page)
-                    st.success(f"⚠️ {target_page} 페이지가 오답노트에 등록되었습니다.")
+                    st.success(f"⚠️ {target_page} 페이지가 오답노트에 안전하게 저장되었습니다.")
                 save_to_local()
 
         st.write("---")
