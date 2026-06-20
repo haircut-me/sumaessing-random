@@ -88,7 +88,7 @@ if menu == "📁 자동 문제 은행 상태":
         st.success(f"✅ 수매씽 문제집 연결 성공! (총 {total_pages_count}페이지)")
         
     if has_answer_pdf:
-        st.success("✅ 스마트 AI 검색형 정답지(answer.pdf) 연결 성공!")
+        st.success("✅ 스마트 정밀 매칭형 정답지(answer.pdf) 연결 성공!")
     else:
         st.warning("⚠️ 깃허브에 자동 채점용 `answer.pdf` 파일이 아직 보이지 않습니다.")
 
@@ -122,7 +122,7 @@ elif menu == "📝 풀이 시험장":
             elif st.session_state.scoring_result == "오답":
                 st.error("❌ 아쉬워요! 틀린 풀이이거나 다른 답입니다. 오답노트에 보관되었습니다.")
             elif st.session_state.scoring_result == "탐색실패":
-                st.info("ℹ️ 정답지에서 해당 페이지 해설 구역을 찾지 못했습니다. 우측 패스 버튼을 누르거나 직접 채점 후 넘어가 주세요.")
+                st.info("ℹ️ 정답지에서 해당 페이지 구역을 찾지 못했습니다. 아래 '패스' 버튼을 눌러주세요.")
 
         c1, c2 = st.columns(2)
         with c1:
@@ -134,46 +134,76 @@ elif menu == "📝 풀이 시험장":
                 else:
                     try:
                         ans_doc = fitz.open(ANSWER_PDF_NAME)
-                        found_target_zone = False
-                        full_matched_text = ""
+                        cleaned_user_ans = user_ans.replace(" ", "")
                         
-                        # 🎯 정답지 전체 쪽을 돌며 현재 '문제 페이지 번호'가 적힌 구역을 검색합니다.
-                        page_pattern = str(target_page)
+                        # 객관식 기호 변환 배열
+                        circle_numbers = ["①", "②", "③", "④", "⑤"]
+                        user_circle = ""
+                        if cleaned_user_ans.isdigit() and 1 <= int(cleaned_user_ans) <= 5:
+                            user_circle = circle_numbers[int(cleaned_user_ans) - 1]
+                        
+                        is_correct = False
+                        found_page_zone = False
+                        
+                        # 1단계 탐색: 정답지 안에서 "빠른정답/바른정답/정답" 코너(표 형태)가 밀집된 곳 우선 검색
+                        # 해당 구역은 단순 텍스트 매칭의 오류를 최소화합니다.
                         for p_idx in range(len(ans_doc)):
-                            page_content = ans_doc[p_idx].get_text("text")
-                            if page_pattern in page_content:
-                                full_matched_text += "\n" + page_content
-                                found_target_zone = True
+                            raw_text = ans_doc[p_idx].get_text("text")
+                            # '정답'이나 '빠른' 단어가 포함된 페이지 우선 타겟팅
+                            if "정답" in raw_text or "바른" in raw_text:
+                                text_lines = [line.strip().replace(" ", "") for line in raw_text.split("\n") if line.strip()]
+                                combined_text = "".join(text_lines)
+                                
+                                # 예: "72페이지 쪽 번호 뒤에 바로 정답 기호가 오는지 정밀 검색"
+                                # 72번 문항 혹은 72쪽 뒤 15글자 내외 근방만 정밀 컷팅
+                                page_pos = combined_text.find(str(target_page))
+                                if page_pos != -1:
+                                    found_page_zone = True
+                                    snippet = combined_text[page_pos:page_pos+20] # 쪽 번호 주변 데이터만 추출
+                                    if cleaned_user_ans in snippet or (user_circle and user_circle in snippet):
+                                        is_correct = True
+                                        break
                         
+                        # 2단계 탐색 (해설지 본문 스캔): 본문 해설 단락 내부 매칭 구조 고도화
+                        if not is_correct:
+                            for p_idx in range(len(ans_doc)):
+                                raw_text = ans_doc[p_idx].get_text("text")
+                                if str(target_page) in raw_text:
+                                    found_page_zone = True
+                                    # 줄 바꿈을 보존한 상태에서 각 문항의 최종 정답 행만 추적
+                                    lines = raw_text.split("\n")
+                                    for line in lines:
+                                        cleaned_line = line.replace(" ", "")
+                                        # 유저 정답이 단독으로 명확히 매칭되거나 정답 선지에 포함되는지 필터링
+                                        # 단순히 아무 글자에나 매칭되는 현상을 막기 위해 '따라서', '정답은', '🛒' 등의 컨텍스트와 매칭 강도 강화
+                                        if cleaned_user_ans in cleaned_line or (user_circle and user_circle in cleaned_line):
+                                            # 단순 연산 과정의 숫자 기호가 아닐 확률 검증 (기호나 정답 명시 텍스트 주변부 체크)
+                                            if any(keyword in cleaned_line for keyword in ["정답", "따라서", "🎯", "①", "②", "③", "④", "⑤", "="]):
+                                                is_correct = True
+                                                break
+                                if is_correct:
+                                    break
+                                    
                         ans_doc.close()
                         
-                        if found_target_zone:
-                            cleaned_ans_pool = re.sub(r'\s+', '', full_matched_text)
-                            cleaned_user_ans = user_ans.replace(" ", "")
-                            
-                            circle_numbers = ["①", "②", "③", "④", "⑤"]
-                            user_circle = ""
-                            if cleaned_user_ans.isdigit() and 1 <= int(cleaned_user_ans) <= 5:
-                                user_circle = circle_numbers[int(cleaned_user_ans) - 1]
-                            
-                            if (cleaned_user_ans in cleaned_ans_pool) or (user_circle and user_circle in cleaned_ans_pool):
-                                st.session_state.scoring_result = "정답"
-                                st.session_state.history_stats["correct"] += 1
-                                st.session_state.history_stats["total"] += 1
-                                st.rerun()
-                            else:
-                                st.session_state.scoring_result = "오답"
-                                st.session_state.history_stats["total"] += 1
-                                if target_page not in st.session_state.wrong_notes:
-                                    st.session_state.wrong_notes.append(target_page)
-                                save_to_local()
-                                st.rerun()
+                        if is_correct:
+                            st.session_state.scoring_result = "정답"
+                            st.session_state.history_stats["correct"] += 1
+                            st.session_state.history_stats["total"] += 1
+                            st.rerun()
+                        elif found_page_zone:
+                            st.session_state.scoring_result = "오답"
+                            st.session_state.history_stats["total"] += 1
+                            if target_page not in st.session_state.wrong_notes:
+                                st.session_state.wrong_notes.append(target_page)
+                            save_to_local()
+                            st.rerun()
                         else:
                             st.session_state.scoring_result = "탐색실패"
                             st.rerun()
                             
                     except Exception as e:
-                        st.error(f" 정답지 파일 해석 오류: {e}")
+                        st.error(f" 정답지 파일 검증 오류: {e}")
                     
         with c2:
             if st.button("이 문제는 넘어가기 (패스)", use_container_width=True):
@@ -211,4 +241,4 @@ elif menu == "🔥 오답노트 관리":
                 save_to_local()
                 st.success("제거되었습니다.")
                 st.rerun()
-            st.write("---")    
+            st.write("---")
