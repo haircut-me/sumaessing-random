@@ -1,10 +1,9 @@
-
 import streamlit as st
 import random
 import json
 import os
 from datetime import datetime
-import fitz  # 정식 등록을 마쳤으므로 바로 로딩합니다!
+import fitz  # PDF 페이지 수를 체크하기 위한 라이브러리
 
 SAVE_FILE = "math_pilot_solo_data.json"
 FIXED_PDF_NAME = "sumaessing.pdf"
@@ -31,18 +30,6 @@ def load_from_local():
         except:
             pass
 
-# ⚙️ PDF 페이지를 고화질 이미지(PNG)로 변환하는 함수
-def render_pdf_page(file_path, page_num):
-    try:
-        doc = fitz.open(file_path)
-        page = doc.load_page(page_num)
-        pix = page.get_pixmap(dpi=150)  # 150 DPI로 선명하게 렌더링
-        img_bytes = pix.tobytes("png")
-        doc.close()
-        return img_bytes
-    except Exception as e:
-        return None
-
 st.set_page_config(page_title="수매씽 랜덤 문제 만들기", layout="wide")
 
 if 'initialized' not in st.session_state:
@@ -62,12 +49,12 @@ if 'initialized' not in st.session_state:
     st.session_state.initialized = True
     save_to_local()
 
-if 'problems_pool' not in st.session_state:
-    st.session_state.problems_pool = []
-if 'current_idx' not in st.session_state:
-    st.session_state.current_idx = 0
+# 🚀 무한 랜덤 모드를 위한 페이지 변수 설정
+if 'current_target_page' not in st.session_state:
+    st.session_state.current_target_page = None
+if 'solved_count' not in st.session_state:
+    st.session_state.solved_count = 0
 
-# 🚀 앱 구동 시 PDF의 전체 페이지 중 무작위 5개 페이지를 엄선
 is_pdf_broken = False
 total_pages_count = 0
 
@@ -77,96 +64,88 @@ if os.path.exists(FIXED_PDF_NAME):
         total_pages_count = len(doc)
         doc.close()
         
-        if total_pages_count > 0 and not st.session_state.problems_pool:
-            sample_size = min(5, total_pages_count)
-            st.session_state.problems_pool = random.sample(range(total_pages_count), sample_size)
-            st.session_state.current_idx = 0
-    except Exception as e:
+        # 첫 구동 시 무작위 페이지 최초 1회 지정
+        if total_pages_count > 0 and st.session_state.current_target_page is None:
+            st.session_state.current_target_page = random.randint(1, total_pages_count)
+    except:
         is_pdf_broken = True
 else:
     is_pdf_broken = True
 
 st.sidebar.title("🎮 수매씽 랜덤 문제 만들기")
 st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
+st.sidebar.markdown(f"### 🎯 오늘 푼 문항수: `{st.session_state.solved_count}개`")
 menu = st.sidebar.radio("메뉴 이동", ["📁 자동 문제 은행 상태", "📝 풀이 시험장", "🔥 오답노트 관리"])
 
 if menu == "📁 자동 문제 은행 상태":
     st.header("📁 내장 문제 은행 관리 상태")
     
     if is_pdf_broken:
-        st.error(f"❌ 깃허브에 있는 `{FIXED_PDF_NAME}` 파일이 없거나 손상되었습니다.")
-        st.markdown("""
-        **해결 방법:** 용량이 제대로 차 있는 진짜 수매씽 PDF 파일을 깃허브에 `sumaessing.pdf`라는 이름으로 업로드해 주세요.
-        """)
+        st.error(f"❌ 깃허브에 `{FIXED_PDF_NAME}` 파일이 없거나 올바르지 않습니다.")
+        st.markdown("**해결 방법:** 바꾸고 싶은 수매씽 PDF 파일명을 `sumaessing.pdf`로 변경해서 깃허브에 업로드해 주세요!")
     else:
-        st.success(f"✅ 수매씽 문제집 연결 완벽 성공! (총 {total_pages_count}페이지 감지됨)")
-        st.info("💡 교재 내부의 수식과 그래프를 훼손하지 않기 위해 '원본 페이지 고화질 스캔 모드'로 작동 중입니다.")
+        st.success(f"✅ 새 수매씽 교재 연결 성공! (총 {total_pages_count}페이지 감지 완료)")
+        st.info("💡 스포일러 방지를 위해 화면에 문제를 보여주는 대신, 풀이할 페이지 번호를 랜덤으로 띄워 드립니다.")
+        st.info("🔄 현재 '무한 랜덤 모드'가 활성화되어 있어 제한 없이 계속해서 다음 문제가 생성됩니다.")
         
-        if st.button("🔄 다른 5개 페이지 무작위 선별 (랜덤 셔플)"):
+        if st.button("🔄 첫 문제 강제 새로고침"):
             if total_pages_count > 0:
-                sample_size = min(5, total_pages_count)
-                st.session_state.problems_pool = random.sample(range(total_pages_count), sample_size)
-                st.session_state.current_idx = 0
-                st.success("🎯 새로운 무작위 5개 시험 범주 페이지가 세팅되었습니다! '풀이 시험장'으로 가보세요.")
+                st.session_state.current_target_page = random.randint(1, total_pages_count)
+                st.success("🎯 첫 미션 페이지가 새로 지정되었습니다! '풀이 시험장'으로 가보세요.")
 
 elif menu == "📝 풀이 시험장":
-    st.header("📝 수매씽 원본 기출 테스트 모드")
+    st.header("📝 수매씽 무한 랜덤 페이지 미션")
     
-    if is_pdf_broken or not st.session_state.problems_pool:
-        st.error("📁 '자동 문제 은행 상태' 탭에서 PDF 파일 상태를 먼저 확인해 주세요.")
+    if is_pdf_broken or st.session_state.current_target_page is None:
+        st.error("📁 '자동 문제 은행 상태' 탭에서 PDF 교재 상태를 먼저 확인해 주세요.")
     else:
-        idx = st.session_state.current_idx
-        pool = st.session_state.problems_pool
-        current_page = pool[idx]
+        target_page = st.session_state.current_target_page
         
-        st.progress((idx + 1) / len(pool), text=f"현재 진행 페이지: {idx + 1} / {len(pool)}")
-        st.markdown(f"### **[실제 범위 기출 - {current_page + 1} 페이지]**")
-        
-        # 🖼 * 현재 인덱스의 PDF 페이지를 고화질 이미지로 출력
-        with st.spinner("원본 문항 해상도 최적화 중..."):
-            img_bytes = render_pdf_page(FIXED_PDF_NAME, current_page)
-        
-        if img_bytes:
-            st.image(img_bytes, use_container_width=True)
-        else:
-            st.error("해당 페이지의 수식 이미지를 복원하는 데 실패했습니다.")
+        # 🎉 커다란 카드 형태로 풀이할 페이지 번호만 깔끔하게 노출!
+        st.markdown(f"""
+        <div style="background-color:#F0F2F6; padding:30px; border-radius:15px; text-align:center; margin-bottom:20px;">
+            <h2 style="color:#FF4B4B; margin:0;">🎯 오늘의 미션 페이지</h2>
+            <h1 style="font-size:80px; margin:10px 0; color:#1C1D1F;">{target_page} <span style="font-size:30px;">Page</span></h1>
+            <p style="color:#555; margin:0;">교재나 태블릿에서 위 페이지를 펼쳐서 문제를 풀어보세요!</p>
+        </div>
+        """, unsafe_allowed_html=True)
             
-        user_ans = st.text_input("정답 입력 및 풀이 메모:", key=f"ans_{idx}")
+        user_ans = st.text_input("메모 또는 정답 기록 채널:", key=f"ans_{target_page}")
 
-        if st.button("풀이 완료 및 기록"):
-            st.session_state.history_stats["total"] += 1
-            st.success("체크 완료! 아래 체크박스를 누르면 오답노트에 보관됩니다.")
-            
-        if st.checkbox("이 페이지를 오답노트에 등록하고 다시 풀겠습니다.", key=f"chk_{idx}"):
-            existing = next((item for item in st.session_state.wrong_notes if item["page"] == current_page), None)
-            if not existing:
-                st.session_state.wrong_notes.append({"id": current_page + 1, "page": current_page})
-                st.success(f"⚠️ {current_page + 1} 페이지가 오답노트에 안전하게 등록되었습니다.")
-            save_to_local()
-
-        st.write("")
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("⬅ * 이전 페이지", disabled=(idx == 0)):
-                st.session_state.current_idx -= 1
-                st.rerun()
+            if st.button("풀이 완료 및 오답 체크"):
+                st.session_state.history_stats["total"] += 1
+                st.success("풀이 완료가 기록되었습니다!")
         with c2:
-            if st.button("다음 페이지 ➡️", disabled=(idx == len(pool) - 1)):
-                st.session_state.current_idx += 1
+            if st.checkbox("이 페이지를 오답노트에 등록하고 나중에 다시 풀겠습니다.", key=f"chk_{target_page}"):
+                if target_page not in st.session_state.wrong_notes:
+                    st.session_state.wrong_notes.append(target_page)
+                    st.success(f"⚠️ {target_page} 페이지가 오답노트에 등록되었습니다.")
+                save_to_local()
+
+        st.write("---")
+        # ➡️ 누르면 다음 무작위 페이지가 끊임없이 나오는 마법의 버튼
+        if st.button("다음 랜덤 문제 뽑기 ➡️", use_container_width=True):
+            if total_pages_count > 0:
+                st.session_state.solved_count += 1
+                st.session_state.current_target_page = random.randint(1, total_pages_count)
                 st.rerun()
 
 elif menu == "🔥 오답노트 관리":
-    st.header("🔥 PDF 원본 오답 정복")
+    st.header("🔥 복습이 필요한 오답 페이지 목록")
     if not st.session_state.wrong_notes:
-        st.success("🎉 현재 누적된 오답 페이지가 없습니다!")
+        st.success("🎉 현재 누적된 오답 미션이 없습니다!")
     else:
-        for w_idx, w_q in enumerate(st.session_state.wrong_notes):
-            with st.expander(f"⚠️ 오답 등록 내역 ({w_q['id']} 페이지)"):
-                img_bytes = render_pdf_page(FIXED_PDF_NAME, w_q["page"])
-                if img_bytes:
-                    st.image(img_bytes, use_container_width=True)
-                if st.button("이 페이지 완벽 마스터 (삭제)", key=f"del_w_{w_idx}"):
-                    st.session_state.wrong_notes.remove(w_q)
+        # 오답 노트를 보기 좋게 정렬해서 보여줌
+        sorted_notes = sorted(st.session_state.wrong_notes)
+        for w_page in sorted_notes:
+            c1, c2 = st.columns([4, 1])
+            with c1:
+                st.warning(f"📋 다시 풀어볼 교재 범위: **{w_page} 페이지**")
+            with c2:
+                if st.button("마스터 완료 (삭제)", key=f"del_page_{w_page}"):
+                    st.session_state.wrong_notes.remove(w_page)
                     save_to_local()
-                    st.success("오답노트에서 제거되었습니다.")
+                    st.success("제거되었습니다.")
                     st.rerun()
