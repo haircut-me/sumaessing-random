@@ -90,7 +90,7 @@ if menu == "📁 자동 문제 은행 상태":
     if has_answer_pdf:
         st.success("✅ 스마트 AI 채점용 정답지(answer.pdf) 연결 성공!")
     else:
-        st.warning("⚠️ 깃허브에 자동 채점용 `answer.pdf` 파일이 아직 보이지 않습니다. 정답지 파일을 레포지토리에 추가하시면 자동 채점 기능이 함께 활성화됩니다!")
+        st.warning("⚠️ 깃허브에 자동 채점용 `answer.pdf` 파일이 아직 보이지 않습니다. 정답지 파일을 레포지토리에 추가하시면 자동 채점 기능이 활성화됩니다!")
 
 elif menu == "📝 풀이 시험장":
     st.header("📝 수매씽 무한 랜덤 시험장")
@@ -116,22 +116,22 @@ elif menu == "📝 풀이 시험장":
         
         user_ans = st.text_input("여기에 정답을 입력하세요 (예: 3 또는 24):", key=f"ans_{target_page}").strip()
 
-        # O / X 표시 화면 레이아웃 정돈
+        # 충돌을 일으키던 복잡한 HTML 제거 후 안전한 스트림릿 표준 컴포넌트로 전면 교체
         if st.session_state.scoring_result is not None:
             if st.session_state.scoring_result == "정답":
-                st.markdown("<div style='text-align:center; padding:10px;'><span style='font-size:100px; color:#FF4B4B;'>⭕</span><h3 style='color:#FF4B4B;'>정답입니다! 🎉</h3></div>", unsafe_allowed_html=True)
+                st.success("🎉 정답입니다! 아주 잘하셨어요!")
             elif st.session_state.scoring_result == "오답":
-                st.markdown("<div style='text-align:center; padding:10px;'><span style='font-size:100px; color:#FF4B4B;'>❌</span><h3 style='color:#FF4B4B;'>아쉬워요! 오답노트에 보관되었습니다. 💪</h3></div>", unsafe_allowed_html=True)
+                st.error("❌ 아쉬워요! 틀린 풀이이거나 다른 답입니다. 오답노트에 보관되었습니다.")
             elif st.session_state.scoring_result == "탐색실패":
-                st.info("ℹ️ 정답지 전체에서 해당 페이지 해설 구역을 찾지 못했습니다. 오른쪽 '패스' 버튼을 눌러주세요.")
+                st.info("ℹ️ 정답지 전체에서 해당 페이지 해설 단락을 명확히 찾지 못했습니다. 오른쪽 '패스' 버튼을 눌러주세요.")
 
         c1, c2 = st.columns(2)
         with c1:
             if st.button("💯 정답 제출 및 실시간 채점", use_container_width=True):
                 if not has_answer_pdf:
-                    st.error("⚠️ 자동 채점을 위해 깃허브에 `answer.pdf` 정답지 파일을 먼저 업로드해 주세요!")
+                    st.error("⚠️ 채점용 `answer.pdf` 파일이 깃허브 저장소에 존재하지 않습니다.")
                 elif not user_ans:
-                    st.warning("⚠️ 정답을 먼저 입력해 주세요!")
+                    st.warning("⚠️ 정답 칸에 정답을 먼저 적어주세요!")
                 else:
                     try:
                         ans_doc = fitz.open(ANSWER_PDF_NAME)
@@ -173,7 +173,7 @@ elif menu == "📝 풀이 시험장":
                             st.rerun()
                             
                     except Exception as e:
-                        st.error(f" 정답지 읽기 실패: {e}")
+                        st.error(f" 정답지 파일 해석 오류: {e}")
                     
         with c2:
             if st.button("이 문제는 넘어가기 (패스)", use_container_width=True):
@@ -211,5 +211,4 @@ elif menu == "🔥 오답노트 관리":
                 save_to_local()
                 st.success("제거되었습니다.")
                 st.rerun()
-            st.write("---") 
-         
+            st.write("---")
