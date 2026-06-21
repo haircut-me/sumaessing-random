@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime
 import fitz  # PyMuPDF
+import streamlit.components.v1 as components
 
 SAVE_FILE = "math_pilot_solo_data.json"
 FIXED_PDF_NAME = "sumaessing.pdf"
@@ -122,10 +123,88 @@ elif menu == "📝 1:1 랜덤 시험장":
         except Exception as e:
             st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
 
-        # 💡 [순정 필기 기능 추가] 문제 바로 밑에 내장 스케치패드 배치
+        # 💡 [독립형 웹 표준 스케치패드 구현] 스트림릿 노드와 완벽히 격리되어 에러를 원천 차단합니다.
         st.write("")
-        st.markdown("✍️ **여기에 패드로 자유롭게 풀이를 적으세요 (지우개/지우기 기능 지원):**")
-        st.canvas(key=f"canvas_{file_page}", background_color="#F8F9FA", height=350, use_container_width=True)
+        st.markdown("✍️ **여기에 패드로 자유롭게 풀이를 적으세요:**")
+        
+        canvas_html = f"""
+        <div style="background-color: #F8F9FA; padding: 10px; border-radius: 8px; border: 1px solid #E0E0E0; font-family: sans-serif;">
+            <div style="margin-bottom: 8px; display: flex; gap: 10px;">
+                <button onclick="clearCanvas()" style="padding: 6px 12px; background-color: #FF4B4B; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">🗑️ 전체 지우기</button>
+                <span style="color: #666; font-size: 13px; margin-top: 5px;">※ 펜/손가락 필기 지원 (문제 변경 시 자동 리셋)</span>
+            </div>
+            <canvas id="paintCanvas_{file_page}" style="background-color: #FFFFFF; border: 1px solid #D3D3D3; border-radius: 4px; touch-action: none; cursor: crosshair;"></canvas>
+        </div>
+        <script>
+            const canvas = document.getElementById('paintCanvas_{file_page}');
+            const ctx = canvas.getContext('2d');
+            
+            // 컨테이너 크기에 맞춰 캔버스 해상도 유동적 설정
+            canvas.width = window.innerWidth - 60;
+            canvas.height = 320;
+            
+            ctx.strokeStyle = '#1E1E1E';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            let isDrawing = false;
+            let lastX = 0;
+            let lastY = 0;
+            
+            function getPos(e) {{
+                let x, y;
+                const rect = canvas.getBoundingClientRect();
+                if (e.touches && e.touches.length > 0) {{
+                    x = e.touches[0].clientX - rect.left;
+                    y = e.touches[0].clientY - rect.top;
+                }} else {{
+                    x = e.clientX - rect.left;
+                    y = e.clientY - rect.top;
+                }}
+                return {{ x, y }};
+            }}
+            
+            function startDrawing(e) {{
+                isDrawing = true;
+                const pos = getPos(e);
+                lastX = pos.x;
+                lastY = pos.y;
+            }}
+            
+            function draw(e) {{
+                if (!isDrawing) return;
+                e.preventDefault();
+                const pos = getPos(e);
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.stroke();
+                lastX = pos.x;
+                lastY = pos.y;
+            }}
+            
+            function stopDrawing() {{
+                isDrawing = false;
+            }}
+            
+            function clearCanvas() {{
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }}
+            
+            // 마우스 이벤트
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseout', stopDrawing);
+            
+            // 터치 이벤트 (패드/모바일 완벽 지원)
+            canvas.addEventListener('touchstart', startDrawing, {{ passive: false }});
+            canvas.addEventListener('touchmove', draw, {{ passive: false }});
+            canvas.addEventListener('touchend', stopDrawing);
+        </script>
+        """
+        components.html(canvas_html, height=410, scrolling=False)
 
         st.write("")
         user_ans = st.text_input("여기에 본인이 생각한 정답을 입력하세요:", key=f"ans_{file_page}").strip()
