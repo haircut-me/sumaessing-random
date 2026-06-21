@@ -4,6 +4,8 @@ import json
 import os
 from datetime import datetime
 import fitz  # PyMuPDF
+from PIL import Image
+import io
 import streamlit.components.v1 as components
 
 SAVE_FILE = "math_pilot_solo_data.json"
@@ -82,6 +84,42 @@ if not is_pdf_broken and total_pages_count > 0:
 
 has_answer_pdf = os.path.exists(ANSWER_PDF_NAME)
 
+# 하단 공백을 감지하고 크롭(Crop)하는 스마트 헬퍼 함수
+def get_cropped_image_bytes(pdf_path, page_idx, zoom=2.0):
+    doc = fitz.open(pdf_path)
+    page = doc.load_page(page_idx)
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+    img_data = pix.tobytes("png")
+    doc.close()
+    
+    # PIL 이미지로 변환하여 픽셀 분석
+    img = Image.open(io.BytesIO(img_data))
+    gray_img = img.convert("L")  # 흑백조 변환
+    
+    width, height = gray_img.size
+    
+    # 아래에서 위로 올라오며 처음으로 흰색(255)이 아닌 픽셀(글자나 그림)이 등장하는 Y축 위치 찾기
+    content_bottom = height
+    step = 4  # 성능 향상을 위한 스캔 간격
+    
+    for y in range(height - 1, 0, -step):
+        is_row_white = True
+        for x in range(0, width, 10):  # 가로축도 촘촘히 샘플링
+            if gray_img.getpixel((x, y)) < 245:  # 완전히 흰색이 아니라면 (경계값 완화)
+                is_row_white = False
+                break
+        if not is_row_white:
+            content_bottom = min(y + 35, height)  # 글자 바로 밑이 잘리지 않도록 여백 가산 추가
+            break
+            
+    # 아래쪽 공백이 너무 많을 때만 크롭 진행 (기본 최소 높이 250 확보)
+    if content_bottom < height and content_bottom > 250:
+        img = img.crop((0, 0, width, content_bottom))
+        
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
 # 4. 사이드바 구성
 st.sidebar.title("🎮 수매씽 1:1 매칭 문제 은행")
 st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
@@ -111,13 +149,10 @@ elif menu == "📝 1:1 랜덤 시험장":
         file_page = st.session_state.current_target_page
         st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
         
-        # 문제 이미지 출력
+        # 스마트 크롭이 적용된 문제 이미지 출력
         try:
-            doc = fitz.open(FIXED_PDF_NAME)
-            page = doc.load_page(file_page - 1)
-            pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
-            st.image(pix.tobytes("png"), use_container_width=True)
-            doc.close()
+            cropped_bytes = get_cropped_image_bytes(FIXED_PDF_NAME, file_page - 1, zoom=2.0)
+            st.image(cropped_bytes, use_container_width=True)
         except Exception as e:
             st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
 
@@ -222,7 +257,7 @@ elif menu == "📝 1:1 랜덤 시험장":
         """
         components.html(canvas_html, height=360, scrolling=False)
 
-        # 💡 [2번 패드] 정답 기재용 전용 손글씨 패드 (타이핑 창 완전 제거)
+        # 💡 [2번 패드] 정답 기재용 전용 손글씨 패드
         st.write("")
         st.markdown("🎯 **최종 정답을 아래 사각형 안에 손글씨로 적으세요:**")
 
@@ -299,7 +334,7 @@ elif menu == "📝 1:1 랜덤 시험장":
                 st.session_state.current_target_page = random.randint(1, total_pages_count)
                 st.rerun()
 
-        # 정답 제출 버튼 클릭 시 하단에 해설지 즉시 출력
+        # 정답 제출 버튼 클릭 시 하단에 해설지 즉시 출력 (해설지도 동일한 크롭 알고리즘 적용 가능)
         if st.session_state.show_answer_trigger and has_answer_pdf:
             st.write("---")
             st.subheader("📖 1:1 매칭 해설 확인창")
@@ -323,9 +358,9 @@ elif menu == "📝 1:1 랜덤 시험장":
                 target_ans_page = (file_page - 1) + st.session_state.ans_offset
                 
                 if 0 <= target_ans_page < len(ans_doc):
-                    ans_page = ans_doc[target_ans_page]
-                    pix_ans = ans_page.get_pixmap(matrix=fitz.Matrix(1.8, 1.8))
-                    st.image(pix_ans.tobytes("png"), caption=f"현재 매칭된 해설지 화면 (오프셋 반영: {target_ans_page + 1}쪽)", use_container_width=True)
+                    # 해설지도 빈 하단 여백이 많으므로 크롭 함수를 사용해 깔끔하게 출력
+                    ans_cropped_bytes = get_cropped_image_bytes(ANSWER_PDF_NAME, target_ans_page, zoom=1.8)
+                    st.image(ans_cropped_bytes, caption=f"현재 매칭된 해설지 화면 (오프셋 반영: {target_ans_page + 1}쪽)", use_container_width=True)
                 else:
                     st.error(f"❌ 설정된 해설지 페이지가 범위를 벗어났습니다. 조절 버튼을 다시 이용해 주세요.")
                 ans_doc.close()
@@ -366,11 +401,8 @@ elif menu == "🔥 오답노트 관리":
         for w_page in sorted(st.session_state.wrong_notes):
             st.warning(f"📋 복습 대상: 편집 파일 내 {w_page}번째 문항")
             try:
-                doc = fitz.open(FIXED_PDF_NAME)
-                page = doc.load_page(w_page - 1)
-                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-                st.image(pix.tobytes("png"), use_container_width=True)
-                doc.close()
+                w_cropped_bytes = get_cropped_image_bytes(FIXED_PDF_NAME, w_page - 1, zoom=1.5)
+                st.image(w_cropped_bytes, use_container_width=True)
             except Exception:
                 pass
                 
