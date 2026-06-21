@@ -32,10 +32,10 @@ def load_from_local():
         except:
             pass
 
-# 1. 페이지 설정
+# 1. 페이지 초기 설정
 st.set_page_config(page_title="수매씽 무한 랜덤 문제 은행", layout="wide")
 
-# 2. 세션 상태 안전하게 초기화
+# 2. 세션 상태 정의 및 로드
 if 'initialized' not in st.session_state:
     st.session_state.wrong_notes = []
     st.session_state.history_stats = {"correct": 0, "total": 0}
@@ -64,7 +64,7 @@ if 'user_answer_text' not in st.session_state:
 if 'canvas_key_counter' not in st.session_state:
     st.session_state.canvas_key_counter = 0
 
-# 3. PDF 파일 존재 유무 확인
+# 3. PDF 파일 무결성 검증
 is_pdf_broken = False
 total_pages_count = 0
 
@@ -82,8 +82,8 @@ else:
 
 has_answer_pdf = os.path.exists(ANSWER_PDF_NAME)
 
-# 4. 사이드바 구성
-st.sidebar.title("🎮 수매씽 1:1 스마트 탭 시험장")
+# 4. 사이드바 UI 레이아웃
+st.sidebar.title("🎮 수매씽 스마트 오답 배틀")
 st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
 st.sidebar.markdown(f"### 🎯 오늘 푼 문항수: `{st.session_state.solved_count}개`")
 menu = st.sidebar.radio("메뉴 이동", ["📁 시스템 연결 상태", "📝 손글씨 랜덤 시험장", "🔥 오답노트 관리"])
@@ -104,12 +104,12 @@ elif menu == "📝 손글씨 랜덤 시험장":
     st.header("📝 수매씽 1:1 손글씨 랜덤 시험장")
     
     if is_pdf_broken or st.session_state.current_target_page is None:
-        st.error("📁 PDF 교재 상태를 사이드바 메뉴에서 확인해 주세요.")
+        st.error("📁 사이드바 메뉴에서 PDF 파일 탐색 상태를 체크해 주세요.")
     else:
         file_page = st.session_state.current_target_page
         st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
         
-        # 1단계: 문제 이미지 출력
+        # 문제 스캔 파일 렌더링
         try:
             doc = fitz.open(FIXED_PDF_NAME)
             page = doc.load_page(file_page - 1)
@@ -117,45 +117,48 @@ elif menu == "📝 손글씨 랜덤 시험장":
             st.image(pix.tobytes("png"), use_container_width=True)
             doc.close()
         except Exception as e:
-            st.error(f"❌ 문제 이미지를 로드하지 못했습니다: {e}")
+            st.error(f"❌ 문제 레이아웃을 스캔하지 못했습니다: {e}")
 
         st.write("")
-        st.markdown("#### ✍️ 탭 펜슬로 아래 캔버스에 풀이 과정을 직접 적으세요:")
+        st.markdown("#### ✍️ 탭 펜슬로 아래 도화지에 풀이 과정을 자유롭게 필기하세요:")
         
-        # 도구 선택 (연필 / 지우개 / 휴지통 역할)
-        tool_col1, tool_col2 = st.columns([1, 4])
+        # 도구 제어 영역
+        tool_col1, tool_col2 = st.columns([1, 3])
         with tool_col1:
-            drawing_mode = st.radio("도구 선택", ("draw", "transform"), format_func=lambda x: "✏️ 펜슬 쓰기" if x=="draw" else "🖐️ 터치 이동/대기")
-            stroke_width = st.slider("펜 굵기 조절", 1, 10, 3)
-            stroke_color = st.color_picker("펜 색상 선택", "#0000FF") # 기본 파란색
+            drawing_mode = st.radio("도구 변경", ("draw", "transform"), format_func=lambda x: "✏️ 펜슬 필기 모드" if x=="draw" else "🖐️ 화면 스크롤/대기")
+            stroke_width = st.slider("선 두께 조절", 1, 10, 3)
+            stroke_color = st.color_picker("펜 색상 변경", "#0000FF")
         
         with tool_col2:
-            # 디지털 손글씨 캔버스 배치 (태블릿 전용 가로형 넓은 풀이판)
-            canvas_result = st_canvas(
-                fill_color="rgba(255, 255, 255, 0)",
-                stroke_width=stroke_width,
-                stroke_color=stroke_color,
-                background_color="#F9F9F9",  # 눈이 편안한 미색 배경
-                height=350,
-                drawing_mode=drawing_mode,
-                key=f"canvas_{file_page}_{st.session_state.canvas_key_counter}",
-                update_streamlit=False, # 펜을 쓸 때마다 화면이 출렁이며 리프레시되는 현상 방지
-                display_toolbar=True    # 캔버스 자체 실행취소(Undo), 전체 지우기(Trash) 툴바 활성화
-            )
+            # 브라우저 충돌을 완전 차단하는 캔버스 블록
+            try:
+                canvas_result = st_canvas(
+                    fill_color="rgba(255, 255, 255, 0)",
+                    stroke_width=stroke_width,
+                    stroke_color=stroke_color,
+                    background_color="#FDFDFD",
+                    height=380,
+                    drawing_mode=drawing_mode,
+                    key=f"canvas_engine_{file_page}_{st.session_state.canvas_key_counter}",
+                    update_streamlit=False,
+                    display_toolbar=True
+                )
+            except Exception as canvas_err:
+                st.error("⚠️ 패키지 로딩 중 오류가 발생했습니다. 잠시 후 F5를 눌러주세요.")
             
         st.write("")
-        user_ans = st.text_input("🎯 최종 정답 입력:", placeholder="정답을 입력하세요 (예: 5)", key=f"ans_{file_page}").strip()
+        user_ans = st.text_input("🎯 최종 정답 입력:", placeholder="답안을 타이핑하세요", key=f"ans_{file_page}").strip()
         if user_ans:
             st.session_state.user_answer_text = user_ans
 
         st.write("")
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("🔍 내 풀이 제출하고 해설지 확인", use_container_width=True):
+            if st.button("🔍 내 손글씨 풀이 제출하고 해설 확인", use_container_width=True):
                 if not has_answer_pdf:
-                    st.error("⚠️ 1:1 매칭된 answer.pdf 파일이 깃허브에 필요합니다.")
+                    st.error("⚠️ 1:1 매칭 처리를 위한 answer.pdf 파일이 감지되지 않았습니다.")
                 elif not user_ans:
-                    st.warning("⚠️ 채점을 위해 최종 정답 칸에 답안을 먼저 입력해 주세요!")
+                    st.warning("⚠️ 정답 칸을 채워주셔야 채점 시퀀스로 진입할 수 있습니다.")
                 else:
                     st.session_state.show_answer_trigger = True
                     st.rerun()
@@ -164,34 +167,34 @@ elif menu == "📝 손글씨 랜덤 시험장":
             if st.button("이 문제는 패스하고 다른 문제 뽑기 ➡️", use_container_width=True):
                 st.session_state.show_answer_trigger = False
                 st.session_state.user_answer_text = ""
-                st.session_state.canvas_key_counter += 1  # 캔버스 완전 초기화 포인터 증가
+                st.session_state.canvas_key_counter += 1
                 st.session_state.current_target_page = random.randint(1, total_pages_count)
                 st.rerun()
 
-        # 정답 제출 후 하단에 정답 요약 및 1:1 매칭 해설지 출력 (내가 쓴 손글씨는 상단 캔버스에 그대로 유지됨)
+        # 정답 출력 대조 뷰어 파트
         if st.session_state.show_answer_trigger and has_answer_pdf:
             st.write("---")
-            st.subheader("📖 1:1 매칭 해설 대조창")
-            st.success(f"**내가 입력한 최종 정답:** `{st.session_state.user_answer_text}`")
+            st.subheader("📖 1:1 자동 매칭 정답 해설")
+            st.info(f"내가 기입한 최종 정답: `{st.session_state.user_answer_text}`")
             
             try:
                 ans_doc = fitz.open(ANSWER_PDF_NAME)
                 if (file_page - 1) < len(ans_doc):
                     ans_page = ans_doc[file_page - 1]
                     pix_ans = ans_page.get_pixmap(matrix=fitz.Matrix(1.8, 1.8))
-                    st.image(pix_ans.tobytes("png"), caption=f"현재 {file_page}번 문제에 매칭된 정답지 화면", use_container_width=True)
+                    st.image(pix_ans.tobytes("png"), caption=f"[ {file_page}번 문항 전용 매칭 해설지 ]", use_container_width=True)
                 else:
-                    st.error(f"❌ 해설지(answer.pdf)의 페이지가 부족합니다.")
+                    st.error(f"❌ 문제수 대비 해설지(answer.pdf)의 총 페이지 숫자가 부족합니다.")
                 ans_doc.close()
             except Exception as e:
-                st.error(f"❌ 해설지 이미지를 불러오지 못했습니다: {e}")
+                st.error(f"❌ 매칭 해설지를 로드하지 못했습니다: {e}")
             
             st.write("")
-            st.markdown("#### 🎯 위의 정식 해설과 본인의 손글씨 풀이를 비교하여 채점해 주세요:")
+            st.markdown("#### 🎯 본인의 손글씨 풀이 논리와 정답을 대조해 채점하세요:")
             
             b1, b2 = st.columns(2)
             with b1:
-                if st.button("⭕ 정답입니다! (맞춤 처리)", use_container_width=True):
+                if st.button("⭕ 정답입니다! (기록 업데이트)", use_container_width=True):
                     st.session_state.history_stats["correct"] += 1
                     st.session_state.history_stats["total"] += 1
                     st.session_state.solved_count += 1
@@ -202,7 +205,7 @@ elif menu == "📝 손글씨 랜덤 시험장":
                     save_to_local()
                     st.rerun()
             with b2:
-                if st.button("❌ 틀렸습니다... (오답노트행)", use_container_width=True):
+                if st.button("❌ 틀렸습니다... (자동 오답노트행)", use_container_width=True):
                     st.session_state.history_stats["total"] += 1
                     st.session_state.solved_count += 1
                     if file_page not in st.session_state.wrong_notes:
@@ -212,26 +215,12 @@ elif menu == "📝 손글씨 랜덤 시험장":
                     st.session_state.user_answer_text = ""
                     st.session_state.canvas_key_counter += 1
                     st.session_state.current_target_page = random.randint(1, total_pages_count)
+                    save_to_local()
                     st.rerun()
 
 elif menu == "🔥 오답노트 관리":
     st.header("🔥 복습이 필요한 오답 목록")
     if not st.session_state.wrong_notes:
-        st.success("🎉 누적된 오답 문항이 없습니다!")
+        st.success("🎉 현재 보관된 오답 문항이 없습니다!")
     else:
-        for w_page in sorted(st.session_state.wrong_notes):
-            st.warning(f"📋 복습 대상: 편집 파일 내 {w_page}번째 문항")
-            try:
-                doc = fitz.open(FIXED_PDF_NAME)
-                page = doc.load_page(w_page - 1)
-                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-                st.image(pix.tobytes("png"), use_container_width=True)
-                doc.close()
-            except:
-                pass
-                
-            if st.button("이 문항 복습 완료 (삭제)", key=f"del_{w_page}"):
-                st.session_state.wrong_notes.remove(w_page)
-                save_to_local()
-                st.rerun()
-            st.write("---")
+        for w_
