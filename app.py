@@ -61,6 +61,10 @@ if 'show_answer_trigger' not in st.session_state:
 if 'user_answer_text' not in st.session_state:
     st.session_state.user_answer_text = ""
 
+# 💡 해설지 오차 미세조정용 변수 초기화
+if 'ans_offset' not in st.session_state:
+    st.session_state.ans_offset = 0
+
 # 3. PDF 파일 존재 유무 및 파일 정상 여부 확인
 is_pdf_broken = False
 total_pages_count = 0
@@ -147,15 +151,31 @@ elif menu == "📝 1:1 랜덤 시험장":
             st.subheader("📖 1:1 매칭 해설 확인창")
             st.info(f"내가 작성한 답안: {st.session_state.user_answer_text}")
             
-            # 검색이나 오차 없이 정확히 문제 파일의 [file_page]번째에 매칭되는 해설지 [file_page]번째 장을 출력
+            # 💡 [컨트롤러 추가] 해설지와 문제지 페이지가 밀릴 때 조정하는 버튼 구역
+            st.markdown("🔧 **해설지 페이지 번호가 맞지 않으면 아래 버튼으로 조절하세요:**")
+            move_col1, move_col2, move_col3 = st.columns([1, 2, 1])
+            with move_col1:
+                if st.button("⬅️ 해설지 1장 앞으로", use_container_width=True):
+                    st.session_state.ans_offset -= 1
+                    st.rerun()
+            with move_col2:
+                st.markdown(f"<p style='text-align: center; font-weight: bold; margin-top: 6px;'>현재 해설지 조정 값: {st.session_state.ans_offset} 장</p>", unsafe_allow_html=True)
+            with move_col3:
+                if st.button("해설지 1장 뒤로 ➡️", use_container_width=True):
+                    st.session_state.ans_offset += 1
+                    st.rerun()
+            
+            # 계산된 오프셋 값을 인덱스에 반영
             try:
                 ans_doc = fitz.open(ANSWER_PDF_NAME)
-                if (file_page - 1) < len(ans_doc):
-                    ans_page = ans_doc[file_page - 1]
+                target_ans_page = (file_page - 1) + st.session_state.ans_offset
+                
+                if 0 <= target_ans_page < len(ans_doc):
+                    ans_page = ans_doc[target_ans_page]
                     pix_ans = ans_page.get_pixmap(matrix=fitz.Matrix(1.8, 1.8))
-                    st.image(pix_ans.tobytes("png"), caption=f"현재 {file_page}번 문제에 1:1 매칭된 정답 및 해설 화면", use_container_width=True)
+                    st.image(pix_ans.tobytes("png"), caption=f"현재 매칭된 해설지 화면 (오프셋 반영: {target_ans_page + 1}쪽)", use_container_width=True)
                 else:
-                    st.error(f"❌ 해설지(answer.pdf)의 총 페이지 수가 문제집보다 적습니다. (해설지 확인 필요)")
+                    st.error(f"❌ 설정된 해설지 페이지({target_ans_page + 1}쪽)가 파일의 실제 범위(1~{len(ans_doc)}쪽)를 벗어났습니다. 조절 버튼을 다시 이용해 주세요.")
                 ans_doc.close()
             except Exception as e:
                 st.error(f"❌ 해설지 화면을 불러오지 못했습니다: {e}")
@@ -207,5 +227,5 @@ elif menu == "🔥 오답노트 관리":
                 st.session_state.wrong_notes.remove(w_page)
                 save_to_local()
                 st.rerun()
-            st.write("---")
+            st.write("---")     
  
