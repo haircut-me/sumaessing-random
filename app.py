@@ -7,7 +7,6 @@ import fitz  # PyMuPDF
 from PIL import Image
 import io
 import streamlit.components.v1 as components
-import plotly.graph_objects as go  # 시각화 차트 추가
 
 SAVE_FILE = "math_pilot_solo_data.json"
 FIXED_PDF_NAME = "sumaessing.pdf"
@@ -117,16 +116,6 @@ def get_cropped_image_bytes(pdf_path, page_idx, zoom=2.0):
     img.save(buf, format="PNG")
     return buf.getvalue()
 
-# 문제 번호에 따라 대단원을 매칭해주는 헬퍼 함수
-def get_chapter_name(page_num):
-    #교재 페이지 범위에 맞춰 유연하게 대단원을 분류합니다.
-    if page_num <= 20:
-        return "I. 지수함수와 로그함수"
-    elif page_num <= 45:
-        return "II. 삼각함수"
-    else:
-        return "III. 수열"
-
 # 4. 사이드바 구성
 st.sidebar.title("🎮 수매씽 1:1 매칭 문제 은행")
 st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
@@ -192,8 +181,10 @@ elif menu == "📝 1:1 랜덤 시험장":
                 tempCanvas.height = canvas.height;
                 const tempCtx = tempCanvas.getContext('2d');
                 tempCtx.drawImage(canvas, 0, 0);
+                
                 canvas.width = canvas.offsetWidth;
                 canvas.height = 280;
+                
                 ctx.drawImage(tempCanvas, 0, 0);
                 applyModeSettings();
             }
@@ -219,16 +210,19 @@ elif menu == "📝 1:1 랜덤 시험장":
                 }
             }
             
-            function setMode(mode) { currentMode = mode; applyModeSettings(); }
+            function setMode(mode) {
+                currentMode = mode;
+                applyModeSettings();
+            }
+            
             window.addEventListener('resize', resizeCanvas);
             setTimeout(resizeCanvas, 200);
             
             function getPos(e) {
                 const rect = canvas.getBoundingClientRect();
-                return {
-                    x: (e.touches ? e.touches[0].clientX : e.clientX) - rect.left,
-                    y: (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
-                };
+                let x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+                let y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+                return { x, y };
             }
             
             canvas.addEventListener('mousedown', (e) => { isDrawing = true; const p = getPos(e); lastX = p.x; lastY = p.y; });
@@ -271,21 +265,28 @@ elif menu == "📝 1:1 랜덤 시험장":
         <script>
             const aCanvas = document.getElementById('ansCanvas');
             const aCtx = aCanvas.getContext('2d');
+            
             function resizeAnsCanvas() {
-                aCanvas.width = aCanvas.offsetWidth; aCanvas.height = 110;
-                aCtx.strokeStyle = '#0056B3'; aCtx.lineWidth = 4; aCtx.lineCap = 'round'; aCtx.lineJoin = 'round';
+                aCanvas.width = aCanvas.offsetWidth;
+                aCanvas.height = 110;
+                aCtx.strokeStyle = '#0056B3';
+                aCtx.lineWidth = 4;
+                aCtx.lineCap = 'round';
+                aCtx.lineJoin = 'round';
             }
             window.addEventListener('resize', resizeAnsCanvas);
             setTimeout(resizeAnsCanvas, 200);
             
-            let aDrawing = false; let aX = 0; let aY = 0;
+            let aDrawing = false;
+            let aX = 0; let aY = 0;
+
             function getAPos(e) {
                 const r = aCanvas.getBoundingClientRect();
-                return {
-                    x: (e.touches ? e.touches[0].clientX : e.clientX) - r.left,
-                    y: (e.touches ? e.touches[0].clientY : e.clientY) - r.top
-                };
+                let x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+                let y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+                return { x, y };
             }
+            
             aCanvas.addEventListener('mousedown', (e) => { aDrawing = true; const p = getAPos(e); aX = p.x; aY = p.y; });
             aCanvas.addEventListener('mousemove', (e) => {
                 if (!aDrawing) return; e.preventDefault(); const p = getAPos(e);
@@ -293,6 +294,7 @@ elif menu == "📝 1:1 랜덤 시험장":
                 aX = p.x; aY = p.y;
             });
             window.addEventListener('mouseup', () => aDrawing = false);
+            
             aCanvas.addEventListener('touchstart', (e) => { aDrawing = true; const p = getAPos(e); aX = p.x; aY = p.y; }, {passive:false});
             aCanvas.addEventListener('touchmove', (e) => {
                 if (!aDrawing) return; e.preventDefault(); const p = getAPos(e);
@@ -300,7 +302,10 @@ elif menu == "📝 1:1 랜덤 시험장":
                 aX = p.x; aY = p.y;
             }, {passive:false});
             aCanvas.addEventListener('touchend', () => aDrawing = false);
-            function clearAns() { aCtx.clearRect(0, 0, aCanvas.width, aCanvas.height); }
+
+            function clearAns() { 
+                aCtx.clearRect(0, 0, aCanvas.width, aCanvas.height); 
+            }
         </script>
         """
         components.html(ans_pad_html, height=170, scrolling=False)
@@ -376,79 +381,14 @@ elif menu == "📝 1:1 랜덤 시험장":
                     save_to_local()
                     st.rerun()
 
-# 7. [메뉴 3] 오답노트 관리 및 통계 시각화 구역
+# 7. [메뉴 3] 오답노트 관리 구역
 elif menu == "🔥 오답노트 관리":
-    st.header("📊 학습 데이터 분석 대시보드")
-    
-    # 💡 [시각화 구역] 3번 누적 정답률 게이지 차트 & 1번 단원별 오답 비율 도넛 차트
-    v_col1, v_col2 = st.columns(2)
-    
-    with v_col1:
-        st.markdown("##### 🎯 3번: 누적 정답률 성과 (목표: 85%)")
-        correct_cnt = st.session_state.history_stats.get("correct", 0)
-        total_cnt = st.session_state.history_stats.get("total", 0)
-        accuracy = (correct_cnt / total_cnt * 100) if total_cnt > 0 else 0.0
-        
-        # Plotly 게이지 차트 그리기
-        fig_gauge = go.Figure(go.Indicator(
-            mode = "gauge+number",
-            value = accuracy,
-            domain = {'x': [0, 1], 'y': [0, 1]},
-            number = {'suffix': "%", 'font': {'size': 24}},
-            gauge = {
-                'axis': {'range': [0, 100], 'tickwidth': 1},
-                'bar': {'color': "#007BFF"},
-                'bgcolor': "white",
-                'borderwidth': 2,
-                'bordercolor': "#D3D3D3",
-                'steps': [
-                    {'range': [0, 60], 'color': '#FFCCCC'},
-                    {'range': [60, 85], 'color': '#FFE699'},
-                    {'range': [85, 100], 'color': '#D4EDDA'}
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 85
-                }
-            }
-        ))
-        fig_gauge.update_layout(height=220, margin=dict(l=30, r=30, t=10, b=10))
-        st.plotly_chart(fig_gauge, use_container_width=True)
-        st.caption(f"현재 총 제출 문항: {total_cnt}개 중 {correct_cnt}개 정답")
-
-    with v_col2:
-        st.markdown("##### 🍩 1번: 취약 단원 분석 (오답 비율)")
-        if not st.session_state.wrong_notes:
-            st.info("🎉 쌓인 오답이 없어 분석 데이터가 깨끗합니다!")
-        else:
-            # 오답 데이터 단원별 카운팅
-            chapter_counts = {}
-            for page in st.session_state.wrong_notes:
-                ch_name = get_chapter_name(page)
-                chapter_counts[ch_name] = chapter_counts.get(ch_name, 0) + 1
-            
-            labels = list(chapter_counts.keys())
-            values = list(chapter_counts.values())
-            
-            # Plotly 도넛 차트 그리기
-            fig_pie = go.Figure(data=[go.Pie(
-                labels=labels, 
-                values=values, 
-                hole=.4,
-                marker=dict(colors=['#FF4B4B', '#FFC107', '#28A745'])
-            )])
-            fig_pie.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=10), showlegend=True)
-            st.plotly_chart(fig_pie, use_container_width=True)
-            
-    st.write("---")
-    st.subheader("🔥 복습이 필요한 오답 목록")
-    
+    st.header("🔥 복습이 필요한 오답 목록")
     if not st.session_state.wrong_notes:
-        st.success("🎉 현재 복습할 오답 문항이 하나도 없습니다! 아주 훌륭합니다.")
+        st.success("🎉 누적된 오답 문항이 없습니다!")
     else:
         for w_page in sorted(st.session_state.wrong_notes):
-            st.warning(f"📋 복습 대상: 편집 파일 내 {w_page}번째 문항 [{get_chapter_name(w_page)}]")
+            st.warning(f"📋 복습 대상: 편집 파일 내 {w_page}번째 문항")
             try:
                 w_cropped_bytes = get_cropped_image_bytes(FIXED_PDF_NAME, w_page - 1, zoom=1.5)
                 st.image(w_cropped_bytes, use_container_width=True)
