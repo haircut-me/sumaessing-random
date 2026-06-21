@@ -31,10 +31,10 @@ def load_from_local():
         except:
             pass
 
-# 1. 페이지 설정
+# 1. 페이지 초기화
 st.set_page_config(page_title="수매씽 무한 랜덤 문제 은행", layout="wide")
 
-# 2. 세션 상태 안전하게 정의 및 초기화
+# 2. 세션 상태 안전하게 초기화
 if 'initialized' not in st.session_state:
     st.session_state.wrong_notes = []
     st.session_state.history_stats = {"correct": 0, "total": 0}
@@ -60,10 +60,8 @@ if 'show_answer_trigger' not in st.session_state:
     st.session_state.show_answer_trigger = False
 if 'user_answer_text' not in st.session_state:
     st.session_state.user_answer_text = ""
-if 'manual_answer_page_idx' not in st.session_state:
-    st.session_state.manual_answer_page_idx = 0
 
-# 3. 파일 검증 규칙 적용
+# 3. PDF 파일 존재 유무 및 파일 정상 여부 확인
 is_pdf_broken = False
 total_pages_count = 0
 
@@ -80,45 +78,37 @@ else:
     is_pdf_broken = True
 
 has_answer_pdf = os.path.exists(ANSWER_PDF_NAME)
-total_answer_pages = 0
-if has_answer_pdf:
-    try:
-        ans_doc = fitz.open(ANSWER_PDF_NAME)
-        total_answer_pages = len(ans_doc)
-        ans_doc.close()
-    except:
-        pass
 
-# 4. 사이드바 인터페이스 구성
-st.sidebar.title("🎮 수매씽 랜덤 문제 은행")
+# 4. 사이드바 구성
+st.sidebar.title("🎮 수매씽 1:1 매칭 문제 은행")
 st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
 st.sidebar.markdown(f"### 🎯 오늘 푼 문항수: `{st.session_state.solved_count}개`")
-menu = st.sidebar.radio("메뉴 이동", ["📁 자동 문제 은행 상태", "📝 풀이 시험장", "🔥 오답노트 관리"])
+menu = st.sidebar.radio("메뉴 이동", ["📁 시스템 연결 상태", "📝 1:1 랜덤 시험장", "🔥 오답노트 관리"])
 
-# 5. [메뉴 1] 문제 파일 상태 점검
-if menu == "📁 자동 문제 은행 상태":
-    st.header("📁 내장 문제 은행 관리 상태")
+# 5. [메뉴 1] 상태 확인 구역
+if menu == "📁 시스템 연결 상태":
+    st.header("📁 교재 및 해설지 파일 상태")
     if is_pdf_broken:
-        st.error(f"❌ 깃허브 저장소에 {FIXED_PDF_NAME} 파일이 없거나 유효하지 않습니다.")
+        st.error(f"❌ 깃허브 저장소에 {FIXED_PDF_NAME} 파일이 누락되었거나 손상되었습니다.")
     else:
-        st.success(f"✅ 편집본 문제집 연결 성공! (총 {total_pages_count}개의 엄선된 문항 적재 완료)")
+        st.success(f"✅ 편집본 문제집 연결 성공! (총 {total_pages_count}개 문항 탑재)")
         
     if has_answer_pdf:
-        st.success(f"✅ 전체 해설지(answer.pdf) 연결 성공! (총 {total_answer_pages}페이지 탐색 가능)")
+        st.success(f"✅ 1:1 매칭 해설지({ANSWER_PDF_NAME}) 연결 성공!")
     else:
-        st.warning("⚠️ 깃허브 저장소에 해설지 answer.pdf 파일이 발견되지 않았습니다.")
+        st.warning(f"⚠️ 깃허브 저장소에 해설지 {ANSWER_PDF_NAME} 파일이 아직 보이지 않습니다.")
 
-# 6. [메뉴 2] 랜덤 문제 풀이 및 수동 정답 대조 시험장
-elif menu == "📝 풀이 시험장":
-    st.header("📝 수매씽 무한 랜덤 시험장")
+# 6. [메뉴 2] 1:1 매칭 랜덤 시험장 구역
+elif menu == "📝 1:1 랜덤 시험장":
+    st.header("📝 1:1 매칭 랜덤 시험장")
     
     if is_pdf_broken or st.session_state.current_target_page is None:
-        st.error("📁 PDF 파일 로드 상태를 확인해 주세요.")
+        st.error("📁 PDF 교재 상태를 사이드바 메뉴에서 확인해 주세요.")
     else:
         file_page = st.session_state.current_target_page
-        st.markdown(f"### 🎯 **현재 랜덤 출제 범위:** [ 발췌 파일 내 {file_page}번째 문항 ]")
+        st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
         
-        # 문제 화면 출력
+        # 문제 이미지 출력
         try:
             doc = fitz.open(FIXED_PDF_NAME)
             page = doc.load_page(file_page - 1)
@@ -126,7 +116,7 @@ elif menu == "📝 풀이 시험장":
             st.image(pix.tobytes("png"), use_container_width=True)
             doc.close()
         except Exception as e:
-            st.error(f"❌ 문제 이미지를 불러오는 중 오류가 발생했습니다: {e}")
+            st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
 
         st.write("")
         user_ans = st.text_input("여기에 본인이 생각한 정답을 입력하세요:", key=f"ans_{file_page}").strip()
@@ -135,11 +125,11 @@ elif menu == "📝 풀이 시험장":
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("🔍 내가 적은 정답 제출하고 해설지 확인", use_container_width=True):
+            if st.button("🔍 정답 제출하고 해설지 즉시 보기", use_container_width=True):
                 if not has_answer_pdf:
-                    st.error("⚠️ 정답 확인을 위해 깃허브에 answer.pdf 파일이 필요합니다.")
+                    st.error("⚠️ 1:1 매칭된 answer.pdf 파일이 깃허브에 필요합니다.")
                 elif not user_ans:
-                    st.warning("⚠️ 정답 칸에 답안을 먼저 작성한 뒤 제출해 주세요.")
+                    st.warning("⚠️ 정답 칸에 본인의 답안을 먼저 작성해 주세요!")
                 else:
                     st.session_state.show_answer_trigger = True
                     st.rerun()
@@ -151,55 +141,27 @@ elif menu == "📝 풀이 시험장":
                 st.session_state.current_target_page = random.randint(1, total_pages_count)
                 st.rerun()
 
-        # 해설지 완전 수동 네비게이터 작동 파트
+        # 정답 제출 버튼 클릭 시 하단에 1:1 매칭된 해설지 즉시 출력
         if st.session_state.show_answer_trigger and has_answer_pdf:
             st.write("---")
-            st.subheader("📖 해설지 수동 매칭 네비게이터")
+            st.subheader("📖 1:1 매칭 해설 확인창")
             st.info(f"내가 작성한 답안: {st.session_state.user_answer_text}")
             
-            current_idx = st.session_state.manual_answer_page_idx
-            
-            # 페이지 제어 버튼 및 슬라이더 UI
-            col_nav1, col_nav2, col_nav3 = st.columns([1, 4, 1])
-            with col_nav1:
-                if st.button("⬅️ 이전 쪽 해설", use_container_width=True):
-                    if current_idx > 0:
-                        st.session_state.manual_answer_page_idx -= 1
-                        st.rerun()
-            with col_nav2:
-                safe_max_val = total_answer_pages if total_answer_pages > 0 else 1
-                safe_val = min(max(current_idx + 1, 1), safe_max_val)
-                selected_page = st.slider(
-                    "문제가 속한 원본 책 기준의 해설지 쪽수 선택", 
-                    min_value=1, 
-                    max_value=safe_max_val, 
-                    value=safe_val
-                )
-                if selected_page - 1 != current_idx:
-                    st.session_state.manual_answer_page_idx = selected_page - 1
-                    st.rerun()
-            with col_nav3:
-                if st.button("다음 쪽 해설 ➡️", use_container_width=True):
-                    if current_idx < total_answer_pages - 1:
-                        st.session_state.manual_answer_page_idx += 1
-                        st.rerun()
-            
-            # 지정된 인덱스의 해설지 화면 출력
+            # 검색이나 오차 없이 정확히 문제 파일의 [file_page]번째에 매칭되는 해설지 [file_page]번째 장을 출력
             try:
                 ans_doc = fitz.open(ANSWER_PDF_NAME)
-                ans_page = ans_doc[st.session_state.manual_answer_page_idx]
-                pix_ans = ans_page.get_pixmap(matrix=fitz.Matrix(1.8, 1.8))
-                st.image(
-                    pix_ans.tobytes("png"), 
-                    caption=f"해설지 파일 기준 [ {st.session_state.manual_answer_page_idx + 1} / {total_answer_pages} ] 페이지", 
-                    use_container_width=True
-                )
+                if (file_page - 1) < len(ans_doc):
+                    ans_page = ans_doc[file_page - 1]
+                    pix_ans = ans_page.get_pixmap(matrix=fitz.Matrix(1.8, 1.8))
+                    st.image(pix_ans.tobytes("png"), caption=f"현재 {file_page}번 문제에 1:1 매칭된 정답 및 해설 화면", use_container_width=True)
+                else:
+                    st.error(f"❌ 해설지(answer.pdf)의 총 페이지 수가 문제집보다 적습니다. (해설지 확인 필요)")
                 ans_doc.close()
             except Exception as e:
-                st.error(f"❌ 해설지 화면을 렌더링하는 데 실패했습니다: {e}")
+                st.error(f"❌ 해설지 화면을 불러오지 못했습니다: {e}")
             
             st.write("")
-            st.markdown("#### 🎯 해설지와 대조하여 직접 채점을 완료해 주세요:")
+            st.markdown("#### 🎯 해설을 확인하신 후 채점 버튼을 눌러주세요:")
             
             b1, b2 = st.columns(2)
             with b1:
@@ -213,7 +175,7 @@ elif menu == "📝 풀이 시험장":
                     save_to_local()
                     st.rerun()
             with b2:
-                if st.button("❌ 틀렸습니다... (오답노트 저장)", use_container_width=True):
+                if st.button("❌ 틀렸습니다... (오답노트행)", use_container_width=True):
                     st.session_state.history_stats["total"] += 1
                     st.session_state.solved_count += 1
                     if file_page not in st.session_state.wrong_notes:
@@ -224,11 +186,11 @@ elif menu == "📝 풀이 시험장":
                     st.session_state.current_target_page = random.randint(1, total_pages_count)
                     st.rerun()
 
-# 7. [메뉴 3] 오답 관리 구역
+# 7. [메뉴 3] 오답노트 관리 구역
 elif menu == "🔥 오답노트 관리":
     st.header("🔥 복습이 필요한 오답 목록")
     if not st.session_state.wrong_notes:
-        st.success("🎉 현재 보관된 오답 문항이 없습니다!")
+        st.success("🎉 누적된 오답 문항이 없습니다!")
     else:
         for w_page in sorted(st.session_state.wrong_notes):
             st.warning(f"📋 복습 대상: 편집 파일 내 {w_page}번째 문항")
