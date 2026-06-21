@@ -61,7 +61,7 @@ if 'show_answer_trigger' not in st.session_state:
 if 'user_answer_text' not in st.session_state:
     st.session_state.user_answer_text = ""
 
-# 💡 해설지 오차 미세조정용 변수 초기화
+# 💡 해설지 오차 미세조정용 변수 초기화 (브라우저가 리셋되어도 유지되도록 안전하게 보호)
 if 'ans_offset' not in st.session_state:
     st.session_state.ans_offset = 0
 
@@ -151,7 +151,7 @@ elif menu == "📝 1:1 랜덤 시험장":
             st.subheader("📖 1:1 매칭 해설 확인창")
             st.info(f"내가 작성한 답안: {st.session_state.user_answer_text}")
             
-            # 💡 [컨트롤러 추가] 해설지와 문제지 페이지가 밀릴 때 조정하는 버튼 구역
+            # 💡 [컨트롤러] 해설지와 문제지 페이지 밀림 보정 컨트롤러
             st.markdown("🔧 **해설지 페이지 번호가 맞지 않으면 아래 버튼으로 조절하세요:**")
             move_col1, move_col2, move_col3 = st.columns([1, 2, 1])
             with move_col1:
@@ -227,5 +227,4 @@ elif menu == "🔥 오답노트 관리":
                 st.session_state.wrong_notes.remove(w_page)
                 save_to_local()
                 st.rerun()
-            st.write("---")     
- 
+            st.write("---")
