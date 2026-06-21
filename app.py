@@ -59,8 +59,6 @@ if 'solved_count' not in st.session_state:
     st.session_state.solved_count = 0
 if 'show_answer_trigger' not in st.session_state:
     st.session_state.show_answer_trigger = False
-if 'user_answer_text' not in st.session_state:
-    st.session_state.user_answer_text = ""
 if 'ans_offset' not in st.session_state:
     st.session_state.ans_offset = 0
 
@@ -123,7 +121,7 @@ elif menu == "📝 1:1 랜덤 시험장":
         except Exception as e:
             st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
 
-        # 💡 [1번 패드] 대형 문제 풀이 연습장 (부분 지우개 모드 추가 버전)
+        # 💡 [1번 패드] 대형 문제 풀이 연습장 (연필 / 부분 지우개 모드)
         st.write("")
         st.markdown("✍️ **여기에 패드로 자유롭게 풀이를 적으세요:**")
         
@@ -146,10 +144,9 @@ elif menu == "📝 1:1 랜덤 시험장":
             
             let isDrawing = false;
             let lastX = 0; let lastY = 0;
-            let currentMode = 'pen'; // 'pen' 또는 'eraser'
+            let currentMode = 'pen';
             
             function resizeCanvas() {
-                // 캔버스 내용 보존용 임시 저장
                 const tempCanvas = document.createElement('canvas');
                 tempCanvas.width = canvas.width;
                 tempCanvas.height = canvas.height;
@@ -159,7 +156,6 @@ elif menu == "📝 1:1 랜덤 시험장":
                 canvas.width = canvas.offsetWidth;
                 canvas.height = 280;
                 
-                // 기존 내용 복원 및 스타일 재정의
                 ctx.drawImage(tempCanvas, 0, 0);
                 applyModeSettings();
             }
@@ -176,9 +172,8 @@ elif menu == "📝 1:1 랜덤 시험장":
                     modeStatus.textContent = '[현재: 연필 쓰기 모드]';
                     modeStatus.style.color = '#007BFF';
                 } else {
-                    // 투명 배경으로 지워지도록 compositeOperation 변경
                     ctx.globalCompositeOperation = 'destination-out';
-                    ctx.lineWidth = 24; // 지우개는 굵직하게 설정
+                    ctx.lineWidth = 24;
                     btnPen.style.backgroundColor = '#6C757D';
                     btnEraser.style.backgroundColor = '#E0A800';
                     modeStatus.textContent = '[현재: 부분 지우개 모드]';
@@ -218,7 +213,6 @@ elif menu == "📝 1:1 랜덤 시험장":
             canvas.addEventListener('touchend', () => isDrawing = false);
             
             function clearCanvas() { 
-                // 전체 삭제 시 잠시 연필 모드로 전환해서 밀어버린 후 복귀
                 const prevComposite = ctx.globalCompositeOperation;
                 ctx.globalCompositeOperation = 'destination-out';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -228,13 +222,9 @@ elif menu == "📝 1:1 랜덤 시험장":
         """
         components.html(canvas_html, height=360, scrolling=False)
 
-        # 💡 [2번 패드] 안전하게 분리한 정답 입력용 필기 패드 구성
+        # 💡 [2번 패드] 정답 기재용 전용 손글씨 패드 (타이핑 창 완전 제거)
         st.write("")
         st.markdown("🎯 **최종 정답을 아래 사각형 안에 손글씨로 적으세요:**")
-        
-        user_ans_written = st.text_input("📝 여기에 손글씨 정답을 기재하거나 직접 타이핑하세요:", key=f"text_input_{file_page}").strip()
-        if user_ans_written:
-            st.session_state.user_answer_text = user_ans_written
 
         ans_pad_html = """
         <div style="background-color: #EBF3FF; padding: 10px; border-radius: 8px; border: 1px solid #A3C7FF; font-family: sans-serif;">
@@ -243,7 +233,7 @@ elif menu == "📝 1:1 랜덤 시험장":
                 <button onclick="clearAns()" style="padding: 3px 8px; background-color: #6C757D; color: white; border: none; border-radius: 4px; cursor: pointer; font-size:11px;">다시 쓰기</button>
             </div>
             <canvas id="ansCanvas" style="background-color: #FFFFFF; border: 2px dashed #7FB3FF; border-radius: 4px; touch-action: none; width: 100%; height: 110px; cursor: crosshair;"></canvas>
-            <div style="color: #555; font-size: 11px; margin-top: 5px; text-align: right;">※ 패드로 정답을 자유롭게 그리신 뒤 아래 [🔍 정답 제출] 버튼을 눌러주세요!</div>
+            <div style="color: #555; font-size: 11px; margin-top: 5px; text-align: right;">※ 정답을 자유롭게 필기하신 뒤 바로 아래 [🔍 정답 제출] 버튼을 눌러주세요!</div>
         </div>
         <script>
             const aCanvas = document.getElementById('ansCanvas');
@@ -306,7 +296,6 @@ elif menu == "📝 1:1 랜덤 시험장":
         with c2:
             if st.button("이 문제는 패스하고 다른 문제 뽑기 ➡️", use_container_width=True):
                 st.session_state.show_answer_trigger = False
-                st.session_state.user_answer_text = ""
                 st.session_state.current_target_page = random.randint(1, total_pages_count)
                 st.rerun()
 
@@ -314,8 +303,6 @@ elif menu == "📝 1:1 랜덤 시험장":
         if st.session_state.show_answer_trigger and has_answer_pdf:
             st.write("---")
             st.subheader("📖 1:1 매칭 해설 확인창")
-            if st.session_state.user_answer_text:
-                st.info(f"제출된 정답 표기: {st.session_state.user_answer_text}")
             
             # 해설지 오차 미세조정 보정 컨트롤러
             st.markdown("🔧 **해설지 페이지 번호가 맞지 않으면 아래 버튼으로 조절하세요:**")
@@ -355,7 +342,6 @@ elif menu == "📝 1:1 랜덤 시험장":
                     st.session_state.history_stats["total"] += 1
                     st.session_state.solved_count += 1
                     st.session_state.show_answer_trigger = False
-                    st.session_state.user_answer_text = ""
                     st.session_state.current_target_page = random.randint(1, total_pages_count)
                     save_to_local()
                     st.rerun()
@@ -367,7 +353,6 @@ elif menu == "📝 1:1 랜덤 시험장":
                         st.session_state.wrong_notes.append(file_page)
                     save_to_local()
                     st.session_state.show_answer_trigger = False
-                    st.session_state.user_answer_text = ""
                     st.session_state.current_target_page = random.randint(1, total_pages_count)
                     save_to_local()
                     st.rerun()
