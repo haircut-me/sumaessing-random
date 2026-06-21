@@ -61,7 +61,7 @@ if 'show_answer_trigger' not in st.session_state:
 if 'user_answer_text' not in st.session_state:
     st.session_state.user_answer_text = ""
 
-# 💡 해설지 오차 미세조정용 변수 초기화 (브라우저가 리셋되어도 유지되도록 안전하게 보호)
+# 해설지 오차 미세조정용 변수 초기화
 if 'ans_offset' not in st.session_state:
     st.session_state.ans_offset = 0
 
@@ -102,7 +102,7 @@ if menu == "📁 시스템 연결 상태":
     else:
         st.warning(f"⚠️ 깃허브 저장소에 해설지 {ANSWER_PDF_NAME} 파일이 아직 보이지 않습니다.")
 
-# 6. [메뉴 2] 1:1 매칭 랜덤 시험장 구역
+# 6. [메뉴 2] 1:1 랜덤 시험장 구역
 elif menu == "📝 1:1 랜덤 시험장":
     st.header("📝 1:1 매칭 랜덤 시험장")
     
@@ -121,6 +121,11 @@ elif menu == "📝 1:1 랜덤 시험장":
             doc.close()
         except Exception as e:
             st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
+
+        # 💡 [순정 필기 기능 추가] 문제 바로 밑에 내장 스케치패드 배치
+        st.write("")
+        st.markdown("✍️ **여기에 패드로 자유롭게 풀이를 적으세요 (지우개/지우기 기능 지원):**")
+        st.canvas(key=f"canvas_{file_page}", background_color="#F8F9FA", height=350, use_container_width=True)
 
         st.write("")
         user_ans = st.text_input("여기에 본인이 생각한 정답을 입력하세요:", key=f"ans_{file_page}").strip()
@@ -151,7 +156,7 @@ elif menu == "📝 1:1 랜덤 시험장":
             st.subheader("📖 1:1 매칭 해설 확인창")
             st.info(f"내가 작성한 답안: {st.session_state.user_answer_text}")
             
-            # 💡 [컨트롤러] 해설지와 문제지 페이지 밀림 보정 컨트롤러
+            # 해설지와 문제지 페이지 밀림 보정 컨트롤러
             st.markdown("🔧 **해설지 페이지 번호가 맞지 않으면 아래 버튼으로 조절하세요:**")
             move_col1, move_col2, move_col3 = st.columns([1, 2, 1])
             with move_col1:
