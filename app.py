@@ -29,7 +29,7 @@ def load_from_local():
                 st.session_state.history_stats = data.get("history_stats", {"correct": 0, "total": 0})
                 st.session_state.streak = data.get("streak", 0)
                 st.session_state.last_login = data.get("last_login", "")
-        except:
+        except Exception:
             pass
 
 # 1. 페이지 초기화
@@ -61,12 +61,10 @@ if 'show_answer_trigger' not in st.session_state:
     st.session_state.show_answer_trigger = False
 if 'user_answer_text' not in st.session_state:
     st.session_state.user_answer_text = ""
-
-# 해설지 오차 미세조정용 변수 초기화
 if 'ans_offset' not in st.session_state:
     st.session_state.ans_offset = 0
 
-# 3. PDF 파일 존재 유무 및 파일 정상 여부 확인
+# 3. PDF 파일 연결 상태 확인 체크
 is_pdf_broken = False
 total_pages_count = 0
 
@@ -75,12 +73,14 @@ if os.path.exists(FIXED_PDF_NAME):
         doc = fitz.open(FIXED_PDF_NAME)
         total_pages_count = len(doc)
         doc.close()
-        if total_pages_count > 0 and st.session_state.current_target_page is None:
-            st.session_state.current_target_page = random.randint(1, total_pages_count)
-    except:
+    except Exception:
         is_pdf_broken = True
 else:
     is_pdf_broken = True
+
+if not is_pdf_broken and total_pages_count > 0:
+    if st.session_state.current_target_page is None:
+        st.session_state.current_target_page = random.randint(1, total_pages_count)
 
 has_answer_pdf = os.path.exists(ANSWER_PDF_NAME)
 
@@ -123,35 +123,76 @@ elif menu == "📝 1:1 랜덤 시험장":
         except Exception as e:
             st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
 
-        # 💡 [1번 패드] 대형 문제 풀이 연습장 (중괄호 충돌 방지를 위해 문자열 결합 처리)
+        # 💡 [1번 패드] 대형 문제 풀이 연습장 (부분 지우개 모드 추가 버전)
         st.write("")
         st.markdown("✍️ **여기에 패드로 자유롭게 풀이를 적으세요:**")
         
         canvas_html = """
         <div style="background-color: #F8F9FA; padding: 10px; border-radius: 8px; border: 1px solid #E0E0E0; font-family: sans-serif;">
-            <div style="margin-bottom: 8px; display: flex; gap: 10px;">
+            <div style="margin-bottom: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <button id="btnPen" onclick="setMode('pen')" style="padding: 6px 14px; background-color: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size:12px;">✏️ 연필 모드</button>
+                <button id="btnEraser" onclick="setMode('eraser')" style="padding: 6px 14px; background-color: #6C757D; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size:12px;">🧽 부분 지우개</button>
                 <button onclick="clearCanvas()" style="padding: 6px 12px; background-color: #FF4B4B; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size:12px;">🗑️ 풀이 싹 지우기</button>
-                <span style="color: #666; font-size: 12px; margin-top: 5px;">※ 펜/손가락 풀이 공간 (문제 변경 시 자동 연습장 리셋)</span>
+                <span id="modeStatus" style="color: #007BFF; font-size: 12px; font-weight: bold; margin-left: 5px;">[현재: 연필 쓰기 모드]</span>
             </div>
             <canvas id="paintCanvas" style="background-color: #FFFFFF; border: 1px solid #D3D3D3; border-radius: 4px; touch-action: none; cursor: crosshair; width: 100%; height: 280px;"></canvas>
         </div>
         <script>
             const canvas = document.getElementById('paintCanvas');
             const ctx = canvas.getContext('2d');
-            
-            function resizeCanvas() {
-                canvas.width = canvas.offsetWidth;
-                canvas.height = 280;
-                ctx.strokeStyle = '#1E1E1E';
-                ctx.lineWidth = 3;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-            }
-            window.addEventListener('resize', resizeCanvas);
-            setTimeout(resizeCanvas, 200);
+            const btnPen = document.getElementById('btnPen');
+            const btnEraser = document.getElementById('btnEraser');
+            const modeStatus = document.getElementById('modeStatus');
             
             let isDrawing = false;
             let lastX = 0; let lastY = 0;
+            let currentMode = 'pen'; // 'pen' 또는 'eraser'
+            
+            function resizeCanvas() {
+                // 캔버스 내용 보존용 임시 저장
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = canvas.width;
+                tempCanvas.height = canvas.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(canvas, 0, 0);
+                
+                canvas.width = canvas.offsetWidth;
+                canvas.height = 280;
+                
+                // 기존 내용 복원 및 스타일 재정의
+                ctx.drawImage(tempCanvas, 0, 0);
+                applyModeSettings();
+            }
+            
+            function applyModeSettings() {
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                if (currentMode === 'pen') {
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.strokeStyle = '#1E1E1E';
+                    ctx.lineWidth = 3;
+                    btnPen.style.backgroundColor = '#007BFF';
+                    btnEraser.style.backgroundColor = '#6C757D';
+                    modeStatus.textContent = '[현재: 연필 쓰기 모드]';
+                    modeStatus.style.color = '#007BFF';
+                } else {
+                    // 투명 배경으로 지워지도록 compositeOperation 변경
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.lineWidth = 24; // 지우개는 굵직하게 설정
+                    btnPen.style.backgroundColor = '#6C757D';
+                    btnEraser.style.backgroundColor = '#E0A800';
+                    modeStatus.textContent = '[현재: 부분 지우개 모드]';
+                    modeStatus.style.color = '#E0A800';
+                }
+            }
+            
+            function setMode(mode) {
+                currentMode = mode;
+                applyModeSettings();
+            }
+            
+            window.addEventListener('resize', resizeCanvas);
+            setTimeout(resizeCanvas, 200);
             
             function getPos(e) {
                 const rect = canvas.getBoundingClientRect();
@@ -176,7 +217,13 @@ elif menu == "📝 1:1 랜덤 시험장":
             }, {passive:false});
             canvas.addEventListener('touchend', () => isDrawing = false);
             
-            function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+            function clearCanvas() { 
+                // 전체 삭제 시 잠시 연필 모드로 전환해서 밀어버린 후 복귀
+                const prevComposite = ctx.globalCompositeOperation;
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.globalCompositeOperation = prevComposite;
+            }
         </script>
         """
         components.html(canvas_html, height=360, scrolling=False)
@@ -185,19 +232,18 @@ elif menu == "📝 1:1 랜덤 시험장":
         st.write("")
         st.markdown("🎯 **최종 정답을 아래 사각형 안에 손글씨로 적으세요:**")
         
-        # 주입형 쿼리파라미터 연동 방식을 대신하여 양방향 데이터 충돌이 없는 전용 입력창 컴포넌트 탑재
-        user_ans_written = st.text_input("📝 인식된 정답 (여기를 눌러 수동 수정도 가능해요):", key=f"text_input_{file_page}").strip()
+        user_ans_written = st.text_input("📝 여기에 손글씨 정답을 기재하거나 직접 타이핑하세요:", key=f"text_input_{file_page}").strip()
         if user_ans_written:
             st.session_state.user_answer_text = user_ans_written
 
         ans_pad_html = """
         <div style="background-color: #EBF3FF; padding: 10px; border-radius: 8px; border: 1px solid #A3C7FF; font-family: sans-serif;">
             <div style="margin-bottom: 6px; display: flex; justify-content: space-between;">
-                <span style="color: #004085; font-weight: bold; font-size: 13px;">✏️ 손글씨 정답 입력기</span>
+                <span style="color: #004085; font-weight: bold; font-size: 13px;">✏️ 손글씨 정답 적는 칸</span>
                 <button onclick="clearAns()" style="padding: 3px 8px; background-color: #6C757D; color: white; border: none; border-radius: 4px; cursor: pointer; font-size:11px;">다시 쓰기</button>
             </div>
             <canvas id="ansCanvas" style="background-color: #FFFFFF; border: 2px dashed #7FB3FF; border-radius: 4px; touch-action: none; width: 100%; height: 110px; cursor: crosshair;"></canvas>
-            <div style="color: #555; font-size: 11px; margin-top: 5px; text-align: right;">※ 정답을 쓰고 아래 [🔍 정답 제출] 버튼을 눌러주세요.</div>
+            <div style="color: #555; font-size: 11px; margin-top: 5px; text-align: right;">※ 패드로 정답을 자유롭게 그리신 뒤 아래 [🔍 정답 제출] 버튼을 눌러주세요!</div>
         </div>
         <script>
             const aCanvas = document.getElementById('ansCanvas');
@@ -323,6 +369,7 @@ elif menu == "📝 1:1 랜덤 시험장":
                     st.session_state.show_answer_trigger = False
                     st.session_state.user_answer_text = ""
                     st.session_state.current_target_page = random.randint(1, total_pages_count)
+                    save_to_local()
                     st.rerun()
 
 # 7. [메뉴 3] 오답노트 관리 구역
@@ -339,7 +386,7 @@ elif menu == "🔥 오답노트 관리":
                 pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
                 st.image(pix.tobytes("png"), use_container_width=True)
                 doc.close()
-            except:
+            except Exception:
                 pass
                 
             if st.button("이 문항 복습 완료 (삭제)", key=f"del_{w_page}"):
