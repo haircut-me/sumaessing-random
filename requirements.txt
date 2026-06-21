@@ -1,2 +1,5 @@
 streamlit
 PyMuPDF
+pymupdf
+pillow
+plotly
