@@ -3,7 +3,6 @@ import random
 import json
 import os
 import fitz
-from streamlit_drawable_canvas import st_canvas
 
 SF = "math_pilot_solo_data.json"
 PDF = "sumaessing.pdf"
@@ -14,7 +13,6 @@ if 'wrong_notes' not in st.session_state:
     st.session_state.solved_count = 0
     st.session_state.show_ans = False
     st.session_state.u_ans = ""
-    st.session_state.c_key = 0
     if os.path.exists(SF):
         try:
             with open(SF, "r", encoding="utf-8") as f:
@@ -23,7 +21,7 @@ if 'wrong_notes' not in st.session_state:
         except: pass
 
 st.set_page_config(page_title="Sumaessing Bank", layout="wide")
-st.sidebar.title("🎮 수매씽 스마트 탭 시험장")
+st.sidebar.title("🎮 수매씽 스마트 시험장")
 st.sidebar.markdown(f"### 🎯 오늘 푼 문항수: `{st.session_state.solved_count}개`")
 menu = st.sidebar.radio("메뉴", ["📝 랜덤 시험장", "🔥 오답노트"])
 
@@ -45,14 +43,8 @@ if menu == "📝 랜덤 시험장":
         pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
         st.image(pix.tobytes("png"), use_container_width=True)
         doc.close()
-
-        st.markdown("#### ✍️ 탭 펜슬 필기장:")
-        st_canvas(
-            fill_color="rgba(255,255,255,0)", stroke_width=3, stroke_color="#0000FF",
-            background_color="#FDFDFD", height=350, drawing_mode="draw",
-            key=f"can_{p_num}_{st.session_state.c_key}", update_streamlit=False
-        )
         
+        st.write("")
         st.session_state.u_ans = st.text_input("🎯 최종 정답 입력:", key=f"a_{p_num}").strip()
 
         c1, c2 = st.columns(2)
@@ -63,7 +55,6 @@ if menu == "📝 랜덤 시험장":
         with c2:
             if st.button("다른 문제 뽑기 ➡️", use_container_width=True):
                 st.session_state.show_ans = False
-                st.session_state.c_key += 1
                 st.session_state.page = random.randint(1, total_p)
                 st.rerun()
 
@@ -81,6 +72,33 @@ if menu == "📝 랜덤 시험장":
                 if st.button("⭕ 맞았습니다!", use_container_width=True):
                     st.session_state.solved_count += 1
                     st.session_state.show_ans = False
-                    st.session_state.c_key += 1
                     st.session_state.page = random.randint(1, total_p)
                     st.rerun()
+            with b2:
+                if st.button("❌ 틀렸습니다 (오답저장)", use_container_width=True):
+                    st.session_state.solved_count += 1
+                    if p_num not in st.session_state.wrong_notes:
+                        st.session_state.wrong_notes.append(p_num)
+                        with open(SF, "w", encoding="utf-8") as f:
+                            json.dump({"wrong_notes": st.session_state.wrong_notes}, f)
+                    st.session_state.show_ans = False
+                    st.session_state.page = random.randint(1, total_p)
+                    st.rerun()
+
+elif menu == "🔥 오답노트":
+    st.header("🔥 오답 목록")
+    if not st.session_state.wrong_notes:
+        st.success("🎉 틀린 문제가 없습니다!")
+    else:
+        for wp in sorted(st.session_state.wrong_notes):
+            st.warning(f"📋 복습 문항: {wp}번째 문제")
+            if is_ok:
+                doc = fitz.open(PDF)
+                st.image(doc.load_page(wp - 1).get_pixmap(matrix=fitz.Matrix(1.5, 1.5)).tobytes("png"), use_container_width=True)
+                doc.close()
+            if st.button("삭제", key=f"del_{wp}"):
+                st.session_state.wrong_notes.remove(wp)
+                with open(SF, "w", encoding="utf-8") as f:
+                    json.dump({"wrong_notes": st.session_state.wrong_notes}, f)
+                st.rerun()
+            st.write("---")
