@@ -151,7 +151,6 @@ elif menu == "📝 1:1 랜덤 시험장":
         with t_col2:
             init_running = "false" if st.session_state.show_answer_trigger else "true"
             
-            # f-string 오류 방지를 위한 일반 문자열 지정 및 후속 치환 기법 적용
             raw_stopwatch_html = """
             <div id="sw-box" style="background-color: #FFF3CD; padding: 12px; border-radius: 10px; border: 1px solid #FFEBAA; font-family: sans-serif; text-align: center; box-sizing: border-box;">
                 <span style="color: #856404; font-weight: bold; font-size: 14px;">⏱️ 문제 풀이 시간</span>
@@ -222,7 +221,7 @@ elif menu == "📝 1:1 랜덤 시험장":
         except Exception as e:
             st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
 
-        # [1번 패드] 대형 문제 풀이 연습장 (스크롤 방식 최적화)
+        # [1번 패드] 대형 문제 풀이 연습장 (스크롤 터치 간섭 완벽 해결)
         st.write("")
         st.markdown("✍️ **여기에 패드로 자유롭게 풀이를 적으세요:**")
         
@@ -233,11 +232,11 @@ elif menu == "📝 1:1 랜덤 시험장":
                 <button id="btnEraser" onclick="setMode('eraser')" style="padding: 6px 14px; background-color: #6C757D; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size:12px;">🧽 부분 지우개</button>
                 <button onclick="clearCanvas()" style="padding: 6px 12px; background-color: #FF4B4B; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size:12px;">🗑️ 풀이 싹 지우기</button>
                 <span id="modeStatus" style="color: #007BFF; font-size: 12px; font-weight: bold; margin-left: 5px;">[현재: 연필 쓰기 모드]</span>
-                <span style="color: #666; font-size: 11px; margin-left: auto;">📜 손가락 2개로 스크롤하여 더 그리기</span>
+                <span style="color: #444; font-size: 11px; margin-left: auto; font-weight: bold; background-color: #E2E6EA; padding: 3px 6px; border-radius: 4px;">✌️ 손가락 2개로 화면을 쓸어내리면 스크롤됩니다!</span>
             </div>
-            <!-- 스크롤 가능한 캔버스 영역 -->
             <div id="canvas-container" style="width: 100%; height: 350px; overflow-y: auto; overflow-x: hidden; border: 1px solid #D3D3D3; border-radius: 4px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
-                <canvas id="paintCanvas" style="background-color: #FFFFFF; touch-action: none; cursor: crosshair; height: 800px;"></canvas>
+                <!-- 스크롤 간섭을 해결하기 위해 touch-action을 pan-y로 변경 -->
+                <canvas id="paintCanvas" style="background-color: #FFFFFF; touch-action: pan-y; cursor: crosshair; height: 800px;"></canvas>
             </div>
         </div>
         <script>
@@ -295,7 +294,6 @@ elif menu == "📝 1:1 랜덤 시험장":
                 const rect = canvas.getBoundingClientRect();
                 let x, y;
                 if (e.touches && e.touches.length === 1) { 
-                    e.preventDefault();
                     x = e.touches[0].clientX - rect.left;
                     y = e.touches[0].clientY - rect.top;
                 } else if (!e.touches) { 
@@ -306,7 +304,11 @@ elif menu == "📝 1:1 랜덤 시험장":
             }
             
             function startDrawing(e) {
+                // 손가락이 1개일 때만 그리기를 시작하고 스크롤 차단
                 if (e.touches && e.touches.length !== 1) return; 
+                if (e.touches && e.touches.length === 1) {
+                    e.preventDefault();
+                }
                 isDrawing = true;
                 const p = getPos(e);
                 lastX = p.x; lastY = p.y;
@@ -316,6 +318,10 @@ elif menu == "📝 1:1 랜덤 시험장":
             
             function draw(e) {
                 if (!isDrawing) return;
+                // 손가락이 1개인 그리기 상태일 때만 화면 스크롤 기본 동작 차단
+                if (e.touches && e.touches.length === 1) {
+                    e.preventDefault();
+                }
                 const p = getPos(e);
                 ctx.beginPath();
                 ctx.moveTo(lastX, lastY);
@@ -342,7 +348,7 @@ elif menu == "📝 1:1 랜덤 시험장":
         """
         components.html(canvas_html, height=430, scrolling=False)
 
-        # [2번 패드] 정답 기재용 전용 손글씨 패드
+        # [2번 패드] 정답 기재용 전용 손글씨 패드 (스크롤 간섭 수정)
         st.write("")
         st.markdown("🎯 **최종 정답을 아래 사각형 안에 손글씨로 적으세요:**")
 
@@ -352,7 +358,7 @@ elif menu == "📝 1:1 랜덤 시험장":
                 <span style="color: #004085; font-weight: bold; font-size: 13px;">✏️ 손글씨 정답 적는 칸</span>
                 <button onclick="clearAns()" style="padding: 3px 8px; background-color: #6C757D; color: white; border: none; border-radius: 4px; cursor: pointer; font-size:11px;">다시 쓰기</button>
             </div>
-            <canvas id="ansCanvas" style="background-color: #FFFFFF; border: 2px dashed #7FB3FF; border-radius: 4px; touch-action: none; width: 100%; height: 110px; cursor: crosshair;"></canvas>
+            <canvas id="ansCanvas" style="background-color: #FFFFFF; border: 2px dashed #7FB3FF; border-radius: 4px; touch-action: pan-y; width: 100%; height: 110px; cursor: crosshair;"></canvas>
             <div style="color: #555; font-size: 11px; margin-top: 5px; text-align: right;">※ 정답을 자유롭게 필기하신 뒤 바로 아래 [🔍 정답 제출] 버튼을 눌러주세요!</div>
         </div>
         <script>
@@ -373,9 +379,15 @@ elif menu == "📝 1:1 랜덤 시험장":
                 aCtx.beginPath(); aCtx.moveTo(aX, aY); aCtx.lineTo(p.x, p.y); aCtx.stroke(); aX = p.x; aY = p.y;
             });
             window.addEventListener('mouseup', () => aDrawing = false);
-            aCanvas.addEventListener('touchstart', (e) => { aDrawing = true; const p = getAPos(e); aX = p.x; aY = p.y; }, {passive:false});
+            aCanvas.addEventListener('touchstart', (e) => { 
+                if(e.touches && e.touches.length !== 1) return;
+                e.preventDefault();
+                aDrawing = true; const p = getAPos(e); aX = p.x; aY = p.y; 
+            }, {passive:false});
             aCanvas.addEventListener('touchmove', (e) => {
-                if (!aDrawing) return; e.preventDefault(); const p = getAPos(e);
+                if (!aDrawing) return; 
+                if(e.touches && e.touches.length === 1) { e.preventDefault(); }
+                const p = getAPos(e);
                 aCtx.beginPath(); aCtx.moveTo(aX, aY); aCtx.lineTo(p.x, p.y); aCtx.stroke(); aX = p.x; aY = p.y;
             }, {passive:false});
             aCanvas.addEventListener('touchend', () => aDrawing = false);
