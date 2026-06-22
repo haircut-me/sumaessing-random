@@ -221,7 +221,7 @@ elif menu == "📝 1:1 랜덤 시험장":
         except Exception as e:
             st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
 
-        # [1번 패드] 대형 문제 풀이 연습장 (스크롤 터치 간섭 완벽 해결)
+        # [1번 패드] 대형 문제 풀이 연습장 (Pointer Events 기반 스마트 하이브리드 제어)
         st.write("")
         st.markdown("✍️ **여기에 패드로 자유롭게 풀이를 적으세요:**")
         
@@ -231,12 +231,12 @@ elif menu == "📝 1:1 랜덤 시험장":
                 <button id="btnPen" onclick="setMode('pen')" style="padding: 6px 14px; background-color: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size:12px;">✏️ 연필 모드</button>
                 <button id="btnEraser" onclick="setMode('eraser')" style="padding: 6px 14px; background-color: #6C757D; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size:12px;">🧽 부분 지우개</button>
                 <button onclick="clearCanvas()" style="padding: 6px 12px; background-color: #FF4B4B; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size:12px;">🗑️ 풀이 싹 지우기</button>
-                <span id="modeStatus" style="color: #007BFF; font-size: 12px; font-weight: bold; margin-left: 5px;">[현재: 연필 쓰기 모드]</span>
-                <span style="color: #444; font-size: 11px; margin-left: auto; font-weight: bold; background-color: #E2E6EA; padding: 3px 6px; border-radius: 4px;">✌️ 손가락 2개로 화면을 쓸어내리면 스크롤됩니다!</span>
+                <span id="modeStatus" style="color: #007BFF; font-size: 12px; font-weight: bold; margin-left: 5px;">[현재: 연필 쓰기 상태]</span>
+                <span style="color: #2F6F4F; font-size: 11px; margin-left: auto; font-weight: bold; background-color: #D4EDDA; padding: 4px 8px; border-radius: 4px;">💡 스마트 인식 활성화: 펜은 필기, 손가락은 자유 스크롤!</span>
             </div>
             <div id="canvas-container" style="width: 100%; height: 350px; overflow-y: auto; overflow-x: hidden; border: 1px solid #D3D3D3; border-radius: 4px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
-                <!-- 스크롤 간섭을 해결하기 위해 touch-action을 pan-y로 변경 -->
-                <canvas id="paintCanvas" style="background-color: #FFFFFF; touch-action: pan-y; cursor: crosshair; height: 800px;"></canvas>
+                <!-- 터치 액션을 양방향 허용하여 브라우저의 손가락 한선가락 스크롤 기본 동작 유도 -->
+                <canvas id="paintCanvas" style="background-color: #FFFFFF; touch-action: auto; cursor: crosshair; height: 800px; width: 100%;"></canvas>
             </div>
         </div>
         <script>
@@ -274,14 +274,14 @@ elif menu == "📝 1:1 랜덤 시험장":
                     ctx.lineWidth = 3;
                     btnPen.style.backgroundColor = '#007BFF';
                     btnEraser.style.backgroundColor = '#6C757D';
-                    modeStatus.textContent = '[현재: 연필 쓰기 모드]';
+                    modeStatus.textContent = '[현재: 연필 쓰기 상태]';
                     modeStatus.style.color = '#007BFF';
                 } else {
                     ctx.globalCompositeOperation = 'destination-out';
                     ctx.lineWidth = 24;
                     btnPen.style.backgroundColor = '#6C757D';
                     btnEraser.style.backgroundColor = '#E0A800';
-                    modeStatus.textContent = '[현재: 부분 지우개 모드]';
+                    modeStatus.textContent = '[현재: 부분 지우개 상태]';
                     modeStatus.style.color = '#E0A800';
                 }
             }
@@ -290,53 +290,49 @@ elif menu == "📝 1:1 랜덤 시험장":
             window.addEventListener('resize', resizeCanvas);
             setTimeout(resizeCanvas, 200);
             
-            function getPos(e) {
+            function getPointerPos(e) {
                 const rect = canvas.getBoundingClientRect();
-                let x, y;
-                if (e.touches && e.touches.length === 1) { 
-                    x = e.touches[0].clientX - rect.left;
-                    y = e.touches[0].clientY - rect.top;
-                } else if (!e.touches) { 
-                    x = e.clientX - rect.left;
-                    y = e.clientY - rect.top;
-                }
-                return { x, y };
+                return {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
             }
             
-            function startDrawing(e) {
-                // 손가락이 1개일 때만 그리기를 시작하고 스크롤 차단
-                if (e.touches && e.touches.length !== 1) return; 
-                if (e.touches && e.touches.length === 1) {
-                    e.preventDefault();
+            // Pointer Events를 활용한 마우스/스타일러스 전용 제어
+            canvas.addEventListener('pointerdown', function(e) {
+                // e.pointerType이 'touch'(손가락)이고 마우스나 전용 펜이 아닐 때는 그리기를 무시하여 스크롤 유도
+                // 단, PC 환경 테스팅을 위해 'mouse'와 전용 스타일러스인 'pen'은 상시 그리기를 작동시킵니다.
+                if (e.pointerType === 'touch') {
+                    return; 
                 }
                 isDrawing = true;
-                const p = getPos(e);
+                const p = getPointerPos(e);
                 lastX = p.x; lastY = p.y;
-            }
+                canvas.setPointerCapture(e.pointerId);
+            });
             
-            function stopDrawing() { isDrawing = false; }
-            
-            function draw(e) {
+            canvas.addEventListener('pointermove', function(e) {
                 if (!isDrawing) return;
-                // 손가락이 1개인 그리기 상태일 때만 화면 스크롤 기본 동작 차단
-                if (e.touches && e.touches.length === 1) {
-                    e.preventDefault();
-                }
-                const p = getPos(e);
+                const p = getPointerPos(e);
                 ctx.beginPath();
                 ctx.moveTo(lastX, lastY);
                 ctx.lineTo(p.x, p.y);
                 ctx.stroke();
                 lastX = p.x; lastY = p.y;
-            }
+            });
             
-            canvas.addEventListener('mousedown', startDrawing);
-            canvas.addEventListener('mousemove', draw);
-            window.addEventListener('mouseup', stopDrawing);
-            
-            canvas.addEventListener('touchstart', startDrawing, {passive:false});
-            canvas.addEventListener('touchmove', draw, {passive:false});
-            canvas.addEventListener('touchend', stopDrawing);
+            canvas.addEventListener('pointerup', function(e) {
+                if (isDrawing) {
+                    canvas.releasePointerCapture(e.pointerId);
+                    isDrawing = false;
+                }
+            });
+            canvas.addEventListener('pointercancel', function(e) {
+                if (isDrawing) {
+                    canvas.releasePointerCapture(e.pointerId);
+                    isDrawing = false;
+                }
+            });
             
             function clearCanvas() { 
                 const prevComposite = ctx.globalCompositeOperation;
@@ -348,49 +344,49 @@ elif menu == "📝 1:1 랜덤 시험장":
         """
         components.html(canvas_html, height=430, scrolling=False)
 
-        # [2번 패드] 정답 기재용 전용 손글씨 패드 (스크롤 간섭 수정)
+        # [2번 패드] 정답 기재용 전용 손글씨 패드 (스마트 하이브리드 제어 동시 이식)
         st.write("")
         st.markdown("🎯 **최종 정답을 아래 사각형 안에 손글씨로 적으세요:**")
 
         ans_pad_html = """
         <div style="background-color: #EBF3FF; padding: 10px; border-radius: 8px; border: 1px solid #A3C7FF; font-family: sans-serif;">
             <div style="margin-bottom: 6px; display: flex; justify-content: space-between;">
-                <span style="color: #004085; font-weight: bold; font-size: 13px;">✏️ 손글씨 정답 적는 칸</span>
+                <span style="color: #004085; font-weight: bold; font-size: 13px;">✏️ 손글씨 정답 적는 칸 (펜 인식 전용 / 손가락은 스크롤 가능)</span>
                 <button onclick="clearAns()" style="padding: 3px 8px; background-color: #6C757D; color: white; border: none; border-radius: 4px; cursor: pointer; font-size:11px;">다시 쓰기</button>
             </div>
-            <canvas id="ansCanvas" style="background-color: #FFFFFF; border: 2px dashed #7FB3FF; border-radius: 4px; touch-action: pan-y; width: 100%; height: 110px; cursor: crosshair;"></canvas>
-            <div style="color: #555; font-size: 11px; margin-top: 5px; text-align: right;">※ 정답을 자유롭게 필기하신 뒤 바로 아래 [🔍 정답 제출] 버튼을 눌러주세요!</div>
+            <canvas id="ansCanvas" style="background-color: #FFFFFF; border: 2px dashed #7FB3FF; border-radius: 4px; touch-action: auto; width: 100%; height: 110px; cursor: crosshair;"></canvas>
         </div>
         <script>
             const aCanvas = document.getElementById('ansCanvas'); const aCtx = aCanvas.getContext('2d');
+            let aDrawing = false; let aX = 0; let aY = 0;
+            
             function resizeAnsCanvas() {
                 aCanvas.width = aCanvas.offsetWidth; aCanvas.height = 110;
                 aCtx.strokeStyle = '#0056B3'; aCtx.lineWidth = 4; aCtx.lineCap = 'round'; aCtx.lineJoin = 'round';
             }
             window.addEventListener('resize', resizeAnsCanvas); setTimeout(resizeAnsCanvas, 200);
-            let aDrawing = false; let aX = 0; let aY = 0;
+            
             function getAPos(e) {
                 const r = aCanvas.getBoundingClientRect();
-                return { x: (e.touches ? e.touches[0].clientX : e.clientX) - r.left, y: (e.touches ? e.touches[0].clientY : e.clientY) - r.top };
+                return { x: e.clientX - r.left, y: e.clientY - r.top };
             }
-            aCanvas.addEventListener('mousedown', (e) => { aDrawing = true; const p = getAPos(e); aX = p.x; aY = p.y; });
-            aCanvas.addEventListener('mousemove', (e) => {
-                if (!aDrawing) return; e.preventDefault(); const p = getAPos(e);
+            
+            aCanvas.addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'touch') return;
+                aDrawing = true; const p = getAPos(e); aX = p.x; aY = p.y;
+                aCanvas.setPointerCapture(e.pointerId);
+            });
+            aCanvas.addEventListener('pointermove', (e) => {
+                if (!aDrawing) return; const p = getAPos(e);
                 aCtx.beginPath(); aCtx.moveTo(aX, aY); aCtx.lineTo(p.x, p.y); aCtx.stroke(); aX = p.x; aY = p.y;
             });
-            window.addEventListener('mouseup', () => aDrawing = false);
-            aCanvas.addEventListener('touchstart', (e) => { 
-                if(e.touches && e.touches.length !== 1) return;
-                e.preventDefault();
-                aDrawing = true; const p = getAPos(e); aX = p.x; aY = p.y; 
-            }, {passive:false});
-            aCanvas.addEventListener('touchmove', (e) => {
-                if (!aDrawing) return; 
-                if(e.touches && e.touches.length === 1) { e.preventDefault(); }
-                const p = getAPos(e);
-                aCtx.beginPath(); aCtx.moveTo(aX, aY); aCtx.lineTo(p.x, p.y); aCtx.stroke(); aX = p.x; aY = p.y;
-            }, {passive:false});
-            aCanvas.addEventListener('touchend', () => aDrawing = false);
+            aCanvas.addEventListener('pointerup', (e) => {
+                if(aDrawing) { aCanvas.releasePointerCapture(e.pointerId); aDrawing = false; }
+            });
+            aCanvas.addEventListener('pointercancel', (e) => {
+                if(aDrawing) { aCanvas.releasePointerCapture(e.pointerId); aDrawing = false; }
+            });
+            
             function clearAns() { aCtx.clearRect(0, 0, aCanvas.width, aCanvas.height); }
         </script>
         """
