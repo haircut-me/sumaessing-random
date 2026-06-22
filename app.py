@@ -17,7 +17,8 @@ def save_to_local():
         "wrong_notes": st.session_state.wrong_notes,
         "history_stats": st.session_state.history_stats,
         "streak": st.session_state.streak,
-        "last_login": st.session_state.last_login
+        "last_login": st.session_state.last_login,
+        "problem_pool": st.session_state.problem_pool  # 문제 풀 상태도 보존
     }
     with open(SAVE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -31,11 +32,28 @@ def load_from_local():
                 st.session_state.history_stats = data.get("history_stats", {"correct": 0, "total": 0})
                 st.session_state.streak = data.get("streak", 0)
                 st.session_state.last_login = data.get("last_login", "")
+                st.session_state.problem_pool = data.get("problem_pool", [])
         except Exception:
             pass
 
 # 1. 페이지 초기화
 st.set_page_config(page_title="수매씽 무한 랜덤 문제 은행", layout="wide")
+
+# PDF 파일 상태 우선 파악 (총 페이지 수 계산용)
+is_pdf_broken = False
+total_pages_count = 0
+
+if os.path.exists(FIXED_PDF_NAME):
+    try:
+        doc = fitz.open(FIXED_PDF_NAME)
+        total_pages_count = len(doc)
+        doc.close()
+    except Exception:
+        is_pdf_broken = True
+else:
+    is_pdf_broken = True
+
+has_answer_pdf = os.path.exists(ANSWER_PDF_NAME)
 
 # 2. 세션 상태 안전하게 초기화
 if 'initialized' not in st.session_state:
@@ -43,6 +61,7 @@ if 'initialized' not in st.session_state:
     st.session_state.history_stats = {"correct": 0, "total": 0}
     st.session_state.streak = 0
     st.session_state.last_login = ""
+    st.session_state.problem_pool = []
     load_from_local()
     
     today_str = datetime.now().strftime("%Y-%m-%d")
@@ -64,25 +83,24 @@ if 'show_answer_trigger' not in st.session_state:
 if 'ans_offset' not in st.session_state:
     st.session_state.ans_offset = 0
 
-# 3. PDF 파일 연결 상태 확인 체크
-is_pdf_broken = False
-total_pages_count = 0
+# 🔄 [핵심 수정] 중복 없는 전문항 무작위 셔플 풀(Pool) 생성 로직
+def refresh_problem_pool():
+    if total_pages_count > 0:
+        pool = list(range(1, total_pages_count + 1))
+        random.shuffle(pool)
+        st.session_state.problem_pool = pool
+        save_to_local()
 
-if os.path.exists(FIXED_PDF_NAME):
-    try:
-        doc = fitz.open(FIXED_PDF_NAME)
-        total_pages_count = len(doc)
-        doc.close()
-    except Exception:
-        is_pdf_broken = True
-else:
-    is_pdf_broken = True
-
+# 문제 풀이 비어있거나 PDF 범위와 맞지 않을 때 새로 생성
 if not is_pdf_broken and total_pages_count > 0:
-    if st.session_state.current_target_page is None:
-        st.session_state.current_target_page = random.randint(1, total_pages_count)
+    if not st.session_state.problem_pool or len(st.session_state.wrong_notes) + len(st.session_state.problem_pool) > total_pages_count:
+        # 최초 생성 혹은 초기화 시점
+        if not st.session_state.problem_pool:
+            refresh_problem_pool()
 
-has_answer_pdf = os.path.exists(ANSWER_PDF_NAME)
+    if st.session_state.current_target_page is None and st.session_state.problem_pool:
+        st.session_state.current_target_page = st.session_state.problem_pool.pop(0)
+        save_to_local()
 
 # 하단 공백을 감지하고 크롭(Crop)하는 스마트 헬퍼 함수
 def get_cropped_image_bytes(pdf_path, page_idx, zoom=2.0):
@@ -148,6 +166,9 @@ elif menu == "📝 1:1 랜덤 시험장":
         t_col1, t_col2 = st.columns([2, 1])
         with t_col1:
             st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
+            # 남은 문항 수 실시간 시각화 안내
+            remaining = len(st.session_state.problem_pool)
+            st.markdown(f"✨ **중복 없는 문제 풀 가동 중** (현재 턴 남은 문항: `{remaining}`개 / 전체 교재: `{total_pages_count}`개)")
         with t_col2:
             init_running = "false" if st.session_state.show_answer_trigger else "true"
             
@@ -413,12 +434,16 @@ elif menu == "📝 1:1 랜덤 시험장":
                 st.session_state.show_answer_trigger = False
                 st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
                 
-                old_page = st.session_state.current_target_page
-                new_page = random.randint(1, total_pages_count)
-                while total_pages_count > 1 and new_page == old_page:
-                    new_page = random.randint(1, total_pages_count)
+                # 다음 중복 없는 문제 꺼내기
+                if not st.session_state.problem_pool:
+                    refresh_problem_pool()
+                
+                if st.session_state.problem_pool:
+                    st.session_state.current_target_page = st.session_state.problem_pool.pop(0)
+                else:
+                    st.session_state.current_target_page = random.randint(1, total_pages_count)
                     
-                st.session_state.current_target_page = new_page
+                save_to_local()
                 st.rerun()
 
         if st.session_state.show_answer_trigger and has_answer_pdf:
@@ -462,12 +487,14 @@ elif menu == "📝 1:1 랜덤 시험장":
                     st.session_state.solved_count += 1
                     st.session_state.show_answer_trigger = False
                     
-                    old_page = st.session_state.current_target_page
-                    new_page = random.randint(1, total_pages_count)
-                    while total_pages_count > 1 and new_page == old_page:
-                        new_page = random.randint(1, total_pages_count)
+                    if not st.session_state.problem_pool:
+                        refresh_problem_pool()
+                    
+                    if st.session_state.problem_pool:
+                        st.session_state.current_target_page = st.session_state.problem_pool.pop(0)
+                    else:
+                        st.session_state.current_target_page = random.randint(1, total_pages_count)
                         
-                    st.session_state.current_target_page = new_page
                     save_to_local()
                     st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
                     st.rerun()
@@ -477,15 +504,17 @@ elif menu == "📝 1:1 랜덤 시험장":
                     st.session_state.solved_count += 1
                     if file_page not in st.session_state.wrong_notes:
                         st.session_state.wrong_notes.append(file_page)
-                    save_to_local()
+                    
                     st.session_state.show_answer_trigger = False
                     
-                    old_page = st.session_state.current_target_page
-                    new_page = random.randint(1, total_pages_count)
-                    while total_pages_count > 1 and new_page == old_page:
-                        new_page = random.randint(1, total_pages_count)
+                    if not st.session_state.problem_pool:
+                        refresh_problem_pool()
+                    
+                    if st.session_state.problem_pool:
+                        st.session_state.current_target_page = st.session_state.problem_pool.pop(0)
+                    else:
+                        st.session_state.current_target_page = random.randint(1, total_pages_count)
                         
-                    st.session_state.current_target_page = new_page
                     save_to_local()
                     st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
                     st.rerun()
