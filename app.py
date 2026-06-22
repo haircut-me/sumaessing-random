@@ -18,7 +18,8 @@ def save_to_local():
         "history_stats": st.session_state.history_stats,
         "streak": st.session_state.streak,
         "last_login": st.session_state.last_login,
-        "problem_pool": st.session_state.problem_pool  # 문제 풀 상태도 보존
+        "problem_pool": st.session_state.problem_pool,
+        "wrong_pool": st.session_state.wrong_pool  # 오답 풀 상태도 저장
     }
     with open(SAVE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -33,6 +34,7 @@ def load_from_local():
                 st.session_state.streak = data.get("streak", 0)
                 st.session_state.last_login = data.get("last_login", "")
                 st.session_state.problem_pool = data.get("problem_pool", [])
+                st.session_state.wrong_pool = data.get("wrong_pool", [])
         except Exception:
             pass
 
@@ -62,6 +64,7 @@ if 'initialized' not in st.session_state:
     st.session_state.streak = 0
     st.session_state.last_login = ""
     st.session_state.problem_pool = []
+    st.session_state.wrong_pool = []
     load_from_local()
     
     today_str = datetime.now().strftime("%Y-%m-%d")
@@ -83,7 +86,7 @@ if 'show_answer_trigger' not in st.session_state:
 if 'ans_offset' not in st.session_state:
     st.session_state.ans_offset = 0
 
-# 🔄 [핵심 수정] 중복 없는 전문항 무작위 셔플 풀(Pool) 생성 로직
+# 🔄 일반 문제 셔플 풀(Pool) 생성 로직
 def refresh_problem_pool():
     if total_pages_count > 0:
         pool = list(range(1, total_pages_count + 1))
@@ -91,16 +94,17 @@ def refresh_problem_pool():
         st.session_state.problem_pool = pool
         save_to_local()
 
-# 문제 풀이 비어있거나 PDF 범위와 맞지 않을 때 새로 생성
-if not is_pdf_broken and total_pages_count > 0:
-    if not st.session_state.problem_pool or len(st.session_state.wrong_notes) + len(st.session_state.problem_pool) > total_pages_count:
-        # 최초 생성 혹은 초기화 시점
-        if not st.session_state.problem_pool:
-            refresh_problem_pool()
-
-    if st.session_state.current_target_page is None and st.session_state.problem_pool:
-        st.session_state.current_target_page = st.session_state.problem_pool.pop(0)
+# 🔄 오답노트 전용 셔플 풀(Pool) 생성 로직
+def refresh_wrong_pool():
+    if st.session_state.wrong_notes:
+        pool = list(st.session_state.wrong_notes)
+        random.shuffle(pool)
+        st.session_state.wrong_pool = pool
         save_to_local()
+
+if not is_pdf_broken and total_pages_count > 0:
+    if not st.session_state.problem_pool:
+        refresh_problem_pool()
 
 # 하단 공백을 감지하고 크롭(Crop)하는 스마트 헬퍼 함수
 def get_cropped_image_bytes(pdf_path, page_idx, zoom=2.0):
@@ -134,11 +138,14 @@ def get_cropped_image_bytes(pdf_path, page_idx, zoom=2.0):
     img.save(buf, format="PNG")
     return buf.getvalue()
 
-# 4. 사이드바 구성
+# 4. 사이드바 구성 (오답 메뉴 세분화)
 st.sidebar.title("🎮 수매씽 1:1 매칭 문제 은행")
 st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
 st.sidebar.markdown(f"### 🎯 오늘 푼 문항수: `{st.session_state.solved_count}개`")
-menu = st.sidebar.radio("메뉴 이동", ["📁 시스템 연결 상태", "📝 1:1 랜덤 시험장", "🔥 오답노트 관리"])
+st.sidebar.markdown(f"### 🚨 누적 오답수: `{len(st.session_state.wrong_notes)}개`")
+
+menu_options = ["📁 시스템 연결 상태", "📝 1:1 랜덤 시험장", "🔥 오답노트 랜덤 시험장", "📋 오답 목록 전체보기"]
+menu = st.sidebar.radio("메뉴 이동", menu_options)
 
 # 5. [메뉴 1] 상태 확인 구역
 if menu == "📁 시스템 연결 상태":
@@ -153,22 +160,50 @@ if menu == "📁 시스템 연결 상태":
     else:
         st.warning(f"⚠️ 깃허브 저장소에 해설지 {ANSWER_PDF_NAME} 파일이 아직 보이지 않습니다.")
 
-# 6. [메뉴 2] 1:1 랜덤 시험장 구역
-elif menu == "📝 1:1 랜덤 시험장":
-    st.header("📝 1:1 매칭 랜덤 시험장")
+# 6. [메뉴 2 / 메뉴 3] 공통 풀이 화면 렌더링 함수
+elif menu in ["📝 1:1 랜덤 시험장", "🔥 오답노트 랜덤 시험장"]:
+    is_wrong_mode = (menu == "🔥 오답노트 랜덤 시험장")
     
-    if is_pdf_broken or st.session_state.current_target_page is None:
+    st.header(menu)
+    
+    if is_pdf_broken:
         st.error("📁 PDF 교재 상태를 사이드바 메뉴에서 확인해 주세요.")
+    elif is_wrong_mode and not st.session_state.wrong_notes:
+        st.success("🎉 현재 오답노트에 등록된 문제가 없습니다! 전체 시험장에서 문제를 먼저 풀어보세요.")
     else:
+        # 모드별 타겟 페이지 결정 로직
+        if is_wrong_mode:
+            # 오답 풀이 비어있으면 새로 생성
+            if not st.session_state.wrong_pool:
+                refresh_wrong_pool()
+            
+            # 현재 페이지가 없거나 오답 목록에 없는 뚱딴지 페이지면 새로 가져옴
+            if st.session_state.current_target_page is None or st.session_state.current_target_page not in st.session_state.wrong_notes:
+                if st.session_state.wrong_pool:
+                    st.session_state.current_target_page = st.session_state.wrong_pool.pop(0)
+                else:
+                    st.session_state.current_target_page = st.session_state.wrong_notes[0]
+                st.session_state.show_answer_trigger = False
+                save_to_local()
+        else:
+            # 일반 랜덤 모드
+            if st.session_state.current_target_page is None or st.session_state.current_target_page in st.session_state.wrong_notes:
+                if not st.session_state.problem_pool:
+                    refresh_problem_pool()
+                st.session_state.current_target_page = st.session_state.problem_pool.pop(0)
+                st.session_state.show_answer_trigger = False
+                save_to_local()
+                
         file_page = st.session_state.current_target_page
         
-        # 상단 레이아웃 분할: 문제 제목과 실시간 인터랙티브 스톱워치 배치
+        # 상단 정보 표시
         t_col1, t_col2 = st.columns([2, 1])
         with t_col1:
             st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
-            # 남은 문항 수 실시간 시각화 안내
-            remaining = len(st.session_state.problem_pool)
-            st.markdown(f"✨ **중복 없는 문제 풀 가동 중** (현재 턴 남은 문항: `{remaining}`개 / 전체 교재: `{total_pages_count}`개)")
+            if is_wrong_mode:
+                st.markdown(f"🚨 **오답 집중 복습 중** (남은 오답 큐: `{len(st.session_state.wrong_pool)}`개 / 총 오답: `{len(st.session_state.wrong_notes)}`개)")
+            else:
+                st.markdown(f"✨ **중복 없는 무작위 풀 가동 중** (현재 턴 남은 문항: `{len(st.session_state.problem_pool)}`개 / 전체 교재: `{total_pages_count}`개)")
         with t_col2:
             init_running = "false" if st.session_state.show_answer_trigger else "true"
             
@@ -242,7 +277,7 @@ elif menu == "📝 1:1 랜덤 시험장":
         except Exception as e:
             st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
 
-        # [1번 패드] 대형 문제 풀이 연습장 (수동 모드 전환형 방식)
+        # [1번 패드] 대형 문제 풀이 연습장 (수동 전환 모드)
         st.write("")
         st.markdown("✍️ **여기에 패드로 자유롭게 풀이를 적으세요:**")
         
@@ -433,17 +468,7 @@ elif menu == "📝 1:1 랜덤 시험장":
             if st.button("이 문제는 패스하고 다른 문제 뽑기 ➡️", use_container_width=True):
                 st.session_state.show_answer_trigger = False
                 st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
-                
-                # 다음 중복 없는 문제 꺼내기
-                if not st.session_state.problem_pool:
-                    refresh_problem_pool()
-                
-                if st.session_state.problem_pool:
-                    st.session_state.current_target_page = st.session_state.problem_pool.pop(0)
-                else:
-                    st.session_state.current_target_page = random.randint(1, total_pages_count)
-                    
-                save_to_local()
+                st.session_state.current_target_page = None
                 st.rerun()
 
         if st.session_state.show_answer_trigger and has_answer_pdf:
@@ -487,14 +512,11 @@ elif menu == "📝 1:1 랜덤 시험장":
                     st.session_state.solved_count += 1
                     st.session_state.show_answer_trigger = False
                     
-                    if not st.session_state.problem_pool:
-                        refresh_problem_pool()
+                    # 오답 모드였다면 정답을 맞췄으므로 오답노트 원본 리스트에서 영구 제거
+                    if is_wrong_mode and file_page in st.session_state.wrong_notes:
+                        st.session_state.wrong_notes.remove(file_page)
                     
-                    if st.session_state.problem_pool:
-                        st.session_state.current_target_page = st.session_state.problem_pool.pop(0)
-                    else:
-                        st.session_state.current_target_page = random.randint(1, total_pages_count)
-                        
+                    st.session_state.current_target_page = None
                     save_to_local()
                     st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
                     st.rerun()
@@ -502,31 +524,26 @@ elif menu == "📝 1:1 랜덤 시험장":
                 if st.button("❌ 틀렸습니다... (오답노트행)", use_container_width=True):
                     st.session_state.history_stats["total"] += 1
                     st.session_state.solved_count += 1
+                    
+                    # 오답 목록에 추가 (이미 있으면 중복 방지)
                     if file_page not in st.session_state.wrong_notes:
                         st.session_state.wrong_notes.append(file_page)
                     
                     st.session_state.show_answer_trigger = False
-                    
-                    if not st.session_state.problem_pool:
-                        refresh_problem_pool()
-                    
-                    if st.session_state.problem_pool:
-                        st.session_state.current_target_page = st.session_state.problem_pool.pop(0)
-                    else:
-                        st.session_state.current_target_page = random.randint(1, total_pages_count)
-                        
+                    st.session_state.current_target_page = None
                     save_to_local()
                     st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
                     st.rerun()
 
-# 7. [메뉴 3] 오답노트 관리 구역
-elif menu == "🔥 오답노트 관리":
-    st.header("🔥 복습이 필요한 오답 목록")
+# 7. [메뉴 4] 오답노트 리스트 전체보기 구역
+elif menu == "📋 오답 목록 전체보기":
+    st.header("📋 복습이 필요한 오답 목록 전체보기")
     if not st.session_state.wrong_notes:
         st.success("🎉 누적된 오답 문항이 없습니다!")
     else:
+        st.info("💡 위 메뉴의 '🔥 오답노트 랜덤 시험장'을 이용하시면 아래 오답들을 무작위로 섞어서 한 문제씩 풀 수 있습니다.")
         for w_page in sorted(st.session_state.wrong_notes):
-            st.warning(f"📋 복습 대상: 편집 파일 내 {w_page}번째 문항")
+            st.warning(f"📋 오답 문제 번호: 발췌본 {w_page}번째 문항")
             try:
                 w_cropped_bytes = get_cropped_image_bytes(FIXED_PDF_NAME, w_page - 1, zoom=1.5)
                 st.image(w_cropped_bytes, use_container_width=True)
@@ -535,6 +552,8 @@ elif menu == "🔥 오답노트 관리":
                 
             if st.button("이 문항 복습 완료 (삭제)", key=f"del_{w_page}"):
                 st.session_state.wrong_notes.remove(w_page)
+                if w_page in st.session_state.wrong_pool:
+                    st.session_state.wrong_pool.remove(w_page)
                 save_to_local()
                 st.rerun()
             st.write("---")
