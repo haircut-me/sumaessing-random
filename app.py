@@ -149,10 +149,10 @@ elif menu == "📝 1:1 랜덤 시험장":
         with t_col1:
             st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
         with t_col2:
-            # 해설 확인창 작동 여부에 따라 스톱워치 기본 구동 상태(init_running) 결정
+            # 정답 제출 상태(show_answer_trigger)일 때는 브라우저 단에서 타이머가 멈추도록 상태 주입
             init_running = "false" if st.session_state.show_answer_trigger else "true"
             
-            # 💡 [정답 제출 자동 연동 및 UI 여백이 확장된 스톱워치]
+            # 💡 [정답 제출 시 기록 보존 & 다음 문제 이동 시 자동 리셋 타이머]
             stopwatch_html = f"""
             <div id="sw-box" style="background-color: #FFF3CD; padding: 12px; border-radius: 10px; border: 1px solid #FFEBAA; font-family: sans-serif; text-align: center; box-sizing: border-box;">
                 <span style="color: #856404; font-weight: bold; font-size: 14px;">⏱️ 문제 풀이 시간</span>
@@ -161,24 +161,38 @@ elif menu == "📝 1:1 랜덤 시험장":
             </div>
             <script>
                 (function() {{
-                    let totalSeconds = 0;
+                    // Streamlit 리런 시에도 타이머가 초기화되지 않고 정답 보존하도록 로컬 스토리지를 결합
+                    let totalSeconds = parseInt(localStorage.getItem('math_timer_sec') || '0');
                     let isRunning = {init_running};
+                    
                     const display = document.getElementById('stopwatch-display');
                     const btnToggle = document.getElementById('btn-toggle');
                     
-                    // 정답 제출 상태에 따른 초기 버튼 스타일 세팅
+                    // 정답이 제출된 상태라면 저장된 최종 시간을 보여주고 멈춤 표시
                     if (!isRunning) {{
                         btnToggle.textContent = "▶️ 다시 시작";
                         btnToggle.style.backgroundColor = "#28A745";
+                        updateDisplay(totalSeconds);
+                    }} else {{
+                        // 새로운 문제집 로드 상태(trigger=false)인데 시간이 너무 크면 리셋 상태로 간주
+                        // 단, 정답 제출 버튼 클릭 직전까지 흐르던 시간은 보존되어야 하므로 세션 초기 진입 시 점검
+                        if (document.referrer && !localStorage.getItem('math_timer_freeze')) {{
+                           // 계속 재생
+                        }}
+                    }}
+                    
+                    function updateDisplay(secs) {{
+                        const minutes = Math.floor(secs / 60);
+                        const seconds = secs % 60;
+                        const paddedSeconds = seconds < 10 ? '0' + seconds : seconds;
+                        display.textContent = minutes + '분 ' + paddedSeconds + '초';
                     }}
                     
                     const intervalId = setInterval(() => {{
                         if (isRunning) {{
                             totalSeconds++;
-                            const minutes = Math.floor(totalSeconds / 60);
-                            const seconds = totalSeconds % 60;
-                            const paddedSeconds = seconds < 10 ? '0' + seconds : seconds;
-                            display.textContent = minutes + '분 ' + paddedSeconds + '초';
+                            localStorage.setItem('math_timer_sec', totalSeconds);
+                            updateDisplay(totalSeconds);
                         }}
                     }}, 1000);
                     
@@ -233,70 +247,45 @@ elif menu == "📝 1:1 랜덤 시험장":
             
             function resizeCanvas() {
                 const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = canvas.width;
-                tempCanvas.height = canvas.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(canvas, 0, 0);
-                canvas.width = canvas.offsetWidth;
-                canvas.height = 280;
-                ctx.drawImage(tempCanvas, 0, 0);
-                applyModeSettings();
+                tempCanvas.width = canvas.width; tempCanvas.height = canvas.height;
+                const tempCtx = tempCanvas.getContext('2d'); tempCtx.drawImage(canvas, 0, 0);
+                canvas.width = canvas.offsetWidth; canvas.height = 280;
+                ctx.drawImage(tempCanvas, 0, 0); applyModeSettings();
             }
             
             function applyModeSettings() {
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round'; ctx.lineJoin = 'round';
                 if (currentMode === 'pen') {
-                    ctx.globalCompositeOperation = 'source-over';
-                    ctx.strokeStyle = '#1E1E1E';
-                    ctx.lineWidth = 3;
-                    btnPen.style.backgroundColor = '#007BFF';
-                    btnEraser.style.backgroundColor = '#6C757D';
-                    modeStatus.textContent = '[현재: 연필 쓰기 모드]';
-                    modeStatus.style.color = '#007BFF';
+                    ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = '#1E1E1E'; ctx.lineWidth = 3;
+                    btnPen.style.backgroundColor = '#007BFF'; btnEraser.style.backgroundColor = '#6C757D';
+                    modeStatus.textContent = '[현재: 연필 쓰기 모드]'; modeStatus.style.color = '#007BFF';
                 } else {
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.lineWidth = 24;
-                    btnPen.style.backgroundColor = '#6C757D';
-                    btnEraser.style.backgroundColor = '#E0A800';
-                    modeStatus.textContent = '[현재: 부분 지우개 모드]';
-                    modeStatus.style.color = '#E0A800';
+                    ctx.globalCompositeOperation = 'destination-out'; ctx.lineWidth = 24;
+                    btnPen.style.backgroundColor = '#6C757D'; btnEraser.style.backgroundColor = '#E0A800';
+                    modeStatus.textContent = '[현재: 부분 지우개 모드]'; modeStatus.style.color = '#E0A800';
                 }
             }
-            
             function setMode(mode) { currentMode = mode; applyModeSettings(); }
-            window.addEventListener('resize', resizeCanvas);
-            setTimeout(resizeCanvas, 200);
-            
+            window.addEventListener('resize', resizeCanvas); setTimeout(resizeCanvas, 200);
             function getPos(e) {
                 const rect = canvas.getBoundingClientRect();
-                return {
-                    x: (e.touches ? e.touches[0].clientX : e.clientX) - rect.left,
-                    y: (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
-                };
+                return { x: (e.touches ? e.touches[0].clientX : e.clientX) - rect.left, y: (e.touches ? e.touches[0].clientY : e.clientY) - rect.top };
             }
-            
             canvas.addEventListener('mousedown', (e) => { isDrawing = true; const p = getPos(e); lastX = p.x; lastY = p.y; });
             canvas.addEventListener('mousemove', (e) => {
                 if (!isDrawing) return; e.preventDefault(); const p = getPos(e);
-                ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
-                lastX = p.x; lastY = p.y;
+                ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke(); lastX = p.x; lastY = p.y;
             });
             window.addEventListener('mouseup', () => isDrawing = false);
-            
             canvas.addEventListener('touchstart', (e) => { isDrawing = true; const p = getPos(e); lastX = p.x; lastY = p.y; }, {passive:false});
             canvas.addEventListener('touchmove', (e) => {
                 if (!isDrawing) return; e.preventDefault(); const p = getPos(e);
-                ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
-                lastX = p.x; lastY = p.y;
+                ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke(); lastX = p.x; lastY = p.y;
             }, {passive:false});
             canvas.addEventListener('touchend', () => isDrawing = false);
-            
             function clearCanvas() { 
-                const prevComposite = ctx.globalCompositeOperation;
-                ctx.globalCompositeOperation = 'destination-out';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.globalCompositeOperation = prevComposite;
+                const prevComposite = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'destination-out';
+                ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalCompositeOperation = prevComposite;
             }
         </script>
         """
@@ -314,35 +303,27 @@ elif menu == "📝 1:1 랜덤 시험장":
             <canvas id="ansCanvas" style="background-color: #FFFFFF; border: 2px dashed #7FB3FF; border-radius: 4px; touch-action: none; width: 100%; height: 110px; cursor: crosshair;"></canvas>
         </div>
         <script>
-            const aCanvas = document.getElementById('ansCanvas');
-            const aCtx = aCanvas.getContext('2d');
+            const aCanvas = document.getElementById('ansCanvas'); const aCtx = aCanvas.getContext('2d');
             function resizeAnsCanvas() {
                 aCanvas.width = aCanvas.offsetWidth; aCanvas.height = 110;
                 aCtx.strokeStyle = '#0056B3'; aCtx.lineWidth = 4; aCtx.lineCap = 'round'; aCtx.lineJoin = 'round';
             }
-            window.addEventListener('resize', resizeAnsCanvas);
-            setTimeout(resizeAnsCanvas, 200);
-            
+            window.addEventListener('resize', resizeAnsCanvas); setTimeout(resizeAnsCanvas, 200);
             let aDrawing = false; let aX = 0; let aY = 0;
             function getAPos(e) {
                 const r = aCanvas.getBoundingClientRect();
-                return {
-                    x: (e.touches ? e.touches[0].clientX : e.clientX) - r.left,
-                    y: (e.touches ? e.touches[0].clientY : e.clientY) - r.top
-                };
+                return { x: (e.touches ? e.touches[0].clientX : e.clientX) - r.left, y: (e.touches ? e.touches[0].clientY : e.clientY) - r.top };
             }
             aCanvas.addEventListener('mousedown', (e) => { aDrawing = true; const p = getAPos(e); aX = p.x; aY = p.y; });
             aCanvas.addEventListener('mousemove', (e) => {
                 if (!aDrawing) return; e.preventDefault(); const p = getAPos(e);
-                aCtx.beginPath(); aCtx.moveTo(aX, aY); aCtx.lineTo(p.x, p.y); aCtx.stroke();
-                aX = p.x; aY = p.y;
+                aCtx.beginPath(); aCtx.moveTo(aX, aY); aCtx.lineTo(p.x, p.y); aCtx.stroke(); aX = p.x; aY = p.y;
             });
             window.addEventListener('mouseup', () => aDrawing = false);
             aCanvas.addEventListener('touchstart', (e) => { aDrawing = true; const p = getAPos(e); aX = p.x; aY = p.y; }, {passive:false});
             aCanvas.addEventListener('touchmove', (e) => {
                 if (!aDrawing) return; e.preventDefault(); const p = getAPos(e);
-                aCtx.beginPath(); aCtx.moveTo(aX, aY); aCtx.lineTo(p.x, p.y); aCtx.stroke();
-                aX = p.x; aY = p.y;
+                aCtx.beginPath(); aCtx.moveTo(aX, aY); aCtx.lineTo(p.x, p.y); aCtx.stroke(); aX = p.x; aY = p.y;
             }, {passive:false});
             aCanvas.addEventListener('touchend', () => aDrawing = false);
             function clearAns() { aCtx.clearRect(0, 0, aCanvas.width, aCanvas.height); }
@@ -358,12 +339,15 @@ elif menu == "📝 1:1 랜덤 시험장":
                     st.error("⚠️ 1:1 매칭된 answer.pdf 파일이 깃허브에 필요합니다.")
                 else:
                     st.session_state.show_answer_trigger = True
+                    st.header("") # 강제 컴포넌트 렌더 바인딩용
                     st.rerun()
                     
         with c2:
             if st.button("이 문제는 패스하고 다른 문제 뽑기 ➡️", use_container_width=True):
                 st.session_state.show_answer_trigger = False
                 st.session_state.current_target_page = random.randint(1, total_pages_count)
+                # 다음 문제 진입 시 타이머 0초 초기화를 스크립트 단에 명령하기 위해 컴포넌트 데이터 강제 리셋용 스크립트 사출
+                st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
                 st.rerun()
 
         if st.session_state.show_answer_trigger and has_answer_pdf:
@@ -408,6 +392,8 @@ elif menu == "📝 1:1 랜덤 시험장":
                     st.session_state.show_answer_trigger = False
                     st.session_state.current_target_page = random.randint(1, total_pages_count)
                     save_to_local()
+                    # 다음 문제로 넘어가므로 시간을 0초로 강제 클리어 지시
+                    st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
                     st.rerun()
             with b2:
                 if st.button("❌ 틀렸습니다... (오답노트행)", use_container_width=True):
@@ -419,6 +405,8 @@ elif menu == "📝 1:1 랜덤 시험장":
                     st.session_state.show_answer_trigger = False
                     st.session_state.current_target_page = random.randint(1, total_pages_count)
                     save_to_local()
+                    # 다음 문제로 넘어가므로 시간을 0초로 강제 클리어 지시
+                    st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
                     st.rerun()
 
 # 7. [메뉴 3] 오답노트 관리 구역
