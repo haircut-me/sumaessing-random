@@ -143,14 +143,50 @@ elif menu == "📝 1:1 랜덤 시험장":
         st.error("📁 PDF 교재 상태를 사이드바 메뉴에서 확인해 주세요.")
     else:
         file_page = st.session_state.current_target_page
-        st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
         
+        # 상단 레이아웃 분할: 문제 제목과 실시간 스톱워치 배치
+        t_col1, t_col2 = st.columns([2, 1])
+        with t_col1:
+            st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
+        with t_col2:
+            # 💡 [웹 탑재형 실시간 스톱워치 컴포넌트]
+            # 문제가 바뀔 때마다(file_page 변경 시) 고유 키값을 주어 타이머를 자동으로 처음부터 재시작합니다.
+            stopwatch_html = f"""
+            <div id="sw-box" style="background-color: #FFF3CD; padding: 10px 15px; border-radius: 8px; border: 1px solid #FFEBAA; font-family: sans-serif; text-align: center;">
+                <span style="color: #856404; font-weight: bold; font-size: 14px;">⏱️ 문제 풀이 시간</span>
+                <div id="stopwatch-display" style="font-size: 20px; font-weight: bold; color: #856404; margin-top: 2px;">0분 00초</div>
+            </div>
+            <script>
+                (function() {{
+                    let totalSeconds = 0;
+                    const display = document.getElementById('stopwatch-display');
+                    
+                    // 1초마다 초를 올리고 화면을 갱신하는 렌더러
+                    const intervalId = setInterval(() => {{
+                        totalSeconds++;
+                        const minutes = Math.floor(totalSeconds / 60);
+                        const seconds = totalSeconds % 60;
+                        const paddedSeconds = seconds < 10 ? '0' + seconds : seconds;
+                        display.textContent = minutes + '분 ' + paddedSeconds + '초';
+                    }}, 1000);
+                    
+                    // 컴포넌트 해제 시 메모리 누수 방지용 클리어
+                    window.onbeforeunload = function() {{
+                        clearInterval(intervalId);
+                    }};
+                }})();
+            </script>
+            """
+            components.html(stopwatch_html, height=75, scrolling=False)
+        
+        # 스마트 크롭이 적용된 문제 이미지 출력
         try:
             cropped_bytes = get_cropped_image_bytes(FIXED_PDF_NAME, file_page - 1, zoom=2.0)
             st.image(cropped_bytes, use_container_width=True)
         except Exception as e:
             st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
 
+        # [1번 패드] 대형 문제 풀이 연습장
         st.write("")
         st.markdown("✍️ **여기에 패드로 자유롭게 풀이를 적으세요:**")
         
@@ -251,6 +287,7 @@ elif menu == "📝 1:1 랜덤 시험장":
         """
         components.html(canvas_html, height=360, scrolling=False)
 
+        # [2번 패드] 정답 기재용 전용 손글씨 패드
         st.write("")
         st.markdown("🎯 **최종 정답을 아래 사각형 안에 손글씨로 적으세요:**")
 
@@ -261,6 +298,7 @@ elif menu == "📝 1:1 랜덤 시험장":
                 <button onclick="clearAns()" style="padding: 3px 8px; background-color: #6C757D; color: white; border: none; border-radius: 4px; cursor: pointer; font-size:11px;">다시 쓰기</button>
             </div>
             <canvas id="ansCanvas" style="background-color: #FFFFFF; border: 2px dashed #7FB3FF; border-radius: 4px; touch-action: none; width: 100%; height: 110px; cursor: crosshair;"></canvas>
+            <div style="color: #555; font-size: 11px; margin-top: 5px; text-align: right;">※ 정답을 자유롭게 필기하신 뒤 바로 아래 [🔍 정답 제출] 버튼을 눌러주세요!</div>
         </div>
         <script>
             const aCanvas = document.getElementById('ansCanvas');
@@ -326,6 +364,7 @@ elif menu == "📝 1:1 랜덤 시험장":
                 st.session_state.current_target_page = random.randint(1, total_pages_count)
                 st.rerun()
 
+        # 정답 제출 버튼 클릭 시 하단에 해설지 즉시 출력
         if st.session_state.show_answer_trigger and has_answer_pdf:
             st.write("---")
             st.subheader("📖 1:1 매칭 해설 확인창")
