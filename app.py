@@ -19,7 +19,7 @@ def save_to_local():
         "streak": st.session_state.streak,
         "last_login": st.session_state.last_login,
         "problem_pool": st.session_state.problem_pool,
-        "wrong_pool": st.session_state.wrong_pool  # 오답 풀 상태도 저장
+        "wrong_pool": st.session_state.wrong_pool
     }
     with open(SAVE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -138,7 +138,7 @@ def get_cropped_image_bytes(pdf_path, page_idx, zoom=2.0):
     img.save(buf, format="PNG")
     return buf.getvalue()
 
-# 4. 사이드바 구성 (오답 메뉴 세분화)
+# 4. 사이드바 구성
 st.sidebar.title("🎮 수매씽 1:1 매칭 문제 은행")
 st.sidebar.markdown(f"### 🔥 연속 학습일: `{st.session_state.streak}일째`")
 st.sidebar.markdown(f"### 🎯 오늘 푼 문항수: `{st.session_state.solved_count}개`")
@@ -160,7 +160,7 @@ if menu == "📁 시스템 연결 상태":
     else:
         st.warning(f"⚠️ 깃허브 저장소에 해설지 {ANSWER_PDF_NAME} 파일이 아직 보이지 않습니다.")
 
-# 6. [메뉴 2 / 메뉴 3] 공통 풀이 화면 렌더링 함수
+# 6. [메뉴 2 / 메뉴 3] 공통 풀이 화면 렌더링 구역
 elif menu in ["📝 1:1 랜덤 시험장", "🔥 오답노트 랜덤 시험장"]:
     is_wrong_mode = (menu == "🔥 오답노트 랜덤 시험장")
     
@@ -173,11 +173,11 @@ elif menu in ["📝 1:1 랜덤 시험장", "🔥 오답노트 랜덤 시험장"]
     else:
         # 모드별 타겟 페이지 결정 로직
         if is_wrong_mode:
-            # 오답 풀이 비어있으면 새로 생성
+            # 오답 풀이 비어있으면 새로 복사해서 생성
             if not st.session_state.wrong_pool:
                 refresh_wrong_pool()
             
-            # 현재 페이지가 없거나 오답 목록에 없는 뚱딴지 페이지면 새로 가져옴
+            # 현재 타겟이 없거나, 오답노트에 없는 문제인 경우 새로 교체
             if st.session_state.current_target_page is None or st.session_state.current_target_page not in st.session_state.wrong_notes:
                 if st.session_state.wrong_pool:
                     st.session_state.current_target_page = st.session_state.wrong_pool.pop(0)
@@ -187,7 +187,7 @@ elif menu in ["📝 1:1 랜덤 시험장", "🔥 오답노트 랜덤 시험장"]
                 save_to_local()
         else:
             # 일반 랜덤 모드
-            if st.session_state.current_target_page is None or st.session_state.current_target_page in st.session_state.wrong_notes:
+            if st.session_state.current_target_page is None:
                 if not st.session_state.problem_pool:
                     refresh_problem_pool()
                 st.session_state.current_target_page = st.session_state.problem_pool.pop(0)
@@ -201,7 +201,7 @@ elif menu in ["📝 1:1 랜덤 시험장", "🔥 오답노트 랜덤 시험장"]
         with t_col1:
             st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
             if is_wrong_mode:
-                st.markdown(f"🚨 **오답 집중 복습 중** (남은 오답 큐: `{len(st.session_state.wrong_pool)}`개 / 총 오답: `{len(st.session_state.wrong_notes)}`개)")
+                st.markdown(f"🚨 **오답 반복 훈련 중** (남은 오답 큐: `{len(st.session_state.wrong_pool)}`개 / 총 오답: `{len(st.session_state.wrong_notes)}`개)")
             else:
                 st.markdown(f"✨ **중복 없는 무작위 풀 가동 중** (현재 턴 남은 문항: `{len(st.session_state.problem_pool)}`개 / 전체 교재: `{total_pages_count}`개)")
         with t_col2:
@@ -277,7 +277,7 @@ elif menu in ["📝 1:1 랜덤 시험장", "🔥 오답노트 랜덤 시험장"]
         except Exception as e:
             st.error(f"❌ 문제 스캔 이미지를 로드하지 못했습니다: {e}")
 
-        # [1번 패드] 대형 문제 풀이 연습장 (수동 전환 모드)
+        # [1번 패드] 대형 문제 풀이 연습장
         st.write("")
         st.markdown("✍️ **여기에 패드로 자유롭게 풀이를 적으세요:**")
         
@@ -344,7 +344,7 @@ elif menu in ["📝 1:1 랜덤 시험장", "🔥 오답노트 랜덤 시험장"]
                     canvas.style.cursor = 'crosshair';
                 } else if (currentMode === 'scroll') {
                     btnScroll.style.backgroundColor = '#28A745';
-                    modeStatus.textContent = '[현재: 🖐️ 한손가락 스크롤 이동 모드]';
+                    modeStatus.textContent = '[현재: 🖐️ 한손가롤 스크롤 이동 모드]';
                     modeStatus.style.color = '#28A745';
                     canvas.style.cursor = 'grab';
                 }
@@ -512,10 +512,7 @@ elif menu in ["📝 1:1 랜덤 시험장", "🔥 오답노트 랜덤 시험장"]
                     st.session_state.solved_count += 1
                     st.session_state.show_answer_trigger = False
                     
-                    # 오답 모드였다면 정답을 맞췄으므로 오답노트 원본 리스트에서 영구 제거
-                    if is_wrong_mode and file_page in st.session_state.wrong_notes:
-                        st.session_state.wrong_notes.remove(file_page)
-                    
+                    # [핵심 수정] 오답 모드에서 정답을 맞춰도 wrong_notes에서 삭제하지 않고 보존합니다.
                     st.session_state.current_target_page = None
                     save_to_local()
                     st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
@@ -525,7 +522,6 @@ elif menu in ["📝 1:1 랜덤 시험장", "🔥 오답노트 랜덤 시험장"]
                     st.session_state.history_stats["total"] += 1
                     st.session_state.solved_count += 1
                     
-                    # 오답 목록에 추가 (이미 있으면 중복 방지)
                     if file_page not in st.session_state.wrong_notes:
                         st.session_state.wrong_notes.append(file_page)
                     
@@ -541,7 +537,7 @@ elif menu == "📋 오답 목록 전체보기":
     if not st.session_state.wrong_notes:
         st.success("🎉 누적된 오답 문항이 없습니다!")
     else:
-        st.info("💡 위 메뉴의 '🔥 오답노트 랜덤 시험장'을 이용하시면 아래 오답들을 무작위로 섞어서 한 문제씩 풀 수 있습니다.")
+        st.info("💡 '🔥 오답노트 랜덤 시험장'에서 문제를 맞춰도 아래 목록에서 자동으로 지워지지 않습니다. 완전히 마스터한 문항만 직접 삭제 버튼을 눌러주세요.")
         for w_page in sorted(st.session_state.wrong_notes):
             st.warning(f"📋 오답 문제 번호: 발췌본 {w_page}번째 문항")
             try:
