@@ -149,10 +149,10 @@ elif menu == "📝 1:1 랜덤 시험장":
         with t_col1:
             st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
         with t_col2:
-            # 정답 제출 상태(show_answer_trigger)일 때는 브라우저 단에서 타이머가 멈추도록 상태 주입
             init_running = "false" if st.session_state.show_answer_trigger else "true"
             
-            # 💡 [정답 제출 시 기록 보존 & 다음 문제 이동 시 자동 리셋 타이머]
+            # 💡 [문제 변경 감지형 자동 리셋 타이머 고도화]
+            # 스크립트 내부에서 현재 문제 번호(file_page)를 저장하고, 이 번호가 달라지면 강제로 0초 초기화합니다.
             stopwatch_html = f"""
             <div id="sw-box" style="background-color: #FFF3CD; padding: 12px; border-radius: 10px; border: 1px solid #FFEBAA; font-family: sans-serif; text-align: center; box-sizing: border-box;">
                 <span style="color: #856404; font-weight: bold; font-size: 14px;">⏱️ 문제 풀이 시간</span>
@@ -161,25 +161,27 @@ elif menu == "📝 1:1 랜덤 시험장":
             </div>
             <script>
                 (function() {{
-                    // Streamlit 리런 시에도 타이머가 초기화되지 않고 정답 보존하도록 로컬 스토리지를 결합
+                    const currentId = "{file_page}";
+                    const savedId = localStorage.getItem('math_current_page_id');
+                    
+                    // 핵심: 문제 페이지 번호가 바뀌었거나 패스를 한 경우 시간을 무조건 0으로 강제 초기화
+                    if (savedId !== currentId) {{
+                        localStorage.setItem('math_timer_sec', '0');
+                        localStorage.setItem('math_current_page_id', currentId);
+                    }}
+                    
                     let totalSeconds = parseInt(localStorage.getItem('math_timer_sec') || '0');
                     let isRunning = {init_running};
                     
                     const display = document.getElementById('stopwatch-display');
                     const btnToggle = document.getElementById('btn-toggle');
                     
-                    // 정답이 제출된 상태라면 저장된 최종 시간을 보여주고 멈춤 표시
                     if (!isRunning) {{
                         btnToggle.textContent = "▶️ 다시 시작";
                         btnToggle.style.backgroundColor = "#28A745";
-                        updateDisplay(totalSeconds);
-                    }} else {{
-                        // 새로운 문제집 로드 상태(trigger=false)인데 시간이 너무 크면 리셋 상태로 간주
-                        // 단, 정답 제출 버튼 클릭 직전까지 흐르던 시간은 보존되어야 하므로 세션 초기 진입 시 점검
-                        if (document.referrer && !localStorage.getItem('math_timer_freeze')) {{
-                           // 계속 재생
-                        }}
                     }}
+                    
+                    updateDisplay(totalSeconds);
                     
                     function updateDisplay(secs) {{
                         const minutes = Math.floor(secs / 60);
@@ -235,15 +237,10 @@ elif menu == "📝 1:1 랜덤 시험장":
             <canvas id="paintCanvas" style="background-color: #FFFFFF; border: 1px solid #D3D3D3; border-radius: 4px; touch-action: none; cursor: crosshair; width: 100%; height: 280px;"></canvas>
         </div>
         <script>
-            const canvas = document.getElementById('paintCanvas');
-            const ctx = canvas.getContext('2d');
-            const btnPen = document.getElementById('btnPen');
-            const btnEraser = document.getElementById('btnEraser');
+            const canvas = document.getElementById('paintCanvas'); const ctx = canvas.getContext('2d');
+            const btnPen = document.getElementById('btnPen'); const btnEraser = document.getElementById('btnEraser');
             const modeStatus = document.getElementById('modeStatus');
-            
-            let isDrawing = false;
-            let lastX = 0; let lastY = 0;
-            let currentMode = 'pen';
+            let isDrawing = false; let lastX = 0; let lastY = 0; let currentMode = 'pen';
             
             function resizeCanvas() {
                 const tempCanvas = document.createElement('canvas');
@@ -339,15 +336,19 @@ elif menu == "📝 1:1 랜덤 시험장":
                     st.error("⚠️ 1:1 매칭된 answer.pdf 파일이 깃허브에 필요합니다.")
                 else:
                     st.session_state.show_answer_trigger = True
-                    st.header("") # 강제 컴포넌트 렌더 바인딩용
                     st.rerun()
                     
         with c2:
             if st.button("이 문제는 패스하고 다른 문제 뽑기 ➡️", use_container_width=True):
                 st.session_state.show_answer_trigger = False
-                st.session_state.current_target_page = random.randint(1, total_pages_count)
-                # 다음 문제 진입 시 타이머 0초 초기화를 스크립트 단에 명령하기 위해 컴포넌트 데이터 강제 리셋용 스크립트 사출
-                st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
+                
+                # 새로운 문제 번호를 뽑음으로써 타이머 내장 스크립트가 '페이지 ID 변경'을 감지하고 리셋하게 유도
+                old_page = st.session_state.current_target_page
+                new_page = random.randint(1, total_pages_count)
+                while total_pages_count > 1 and new_page == old_page:
+                    new_page = random.randint(1, total_pages_count)
+                    
+                st.session_state.current_target_page = new_page
                 st.rerun()
 
         if st.session_state.show_answer_trigger and has_answer_pdf:
@@ -390,10 +391,14 @@ elif menu == "📝 1:1 랜덤 시험장":
                     st.session_state.history_stats["total"] += 1
                     st.session_state.solved_count += 1
                     st.session_state.show_answer_trigger = False
-                    st.session_state.current_target_page = random.randint(1, total_pages_count)
+                    
+                    old_page = st.session_state.current_target_page
+                    new_page = random.randint(1, total_pages_count)
+                    while total_pages_count > 1 and new_page == old_page:
+                        new_page = random.randint(1, total_pages_count)
+                        
+                    st.session_state.current_target_page = new_page
                     save_to_local()
-                    # 다음 문제로 넘어가므로 시간을 0초로 강제 클리어 지시
-                    st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
                     st.rerun()
             with b2:
                 if st.button("❌ 틀렸습니다... (오답노트행)", use_container_width=True):
@@ -403,10 +408,14 @@ elif menu == "📝 1:1 랜덤 시험장":
                         st.session_state.wrong_notes.append(file_page)
                     save_to_local()
                     st.session_state.show_answer_trigger = False
-                    st.session_state.current_target_page = random.randint(1, total_pages_count)
+                    
+                    old_page = st.session_state.current_target_page
+                    new_page = random.randint(1, total_pages_count)
+                    while total_pages_count > 1 and new_page == old_page:
+                        new_page = random.randint(1, total_pages_count)
+                        
+                    st.session_state.current_target_page = new_page
                     save_to_local()
-                    # 다음 문제로 넘어가므로 시간을 0초로 강제 클리어 지시
-                    st.components.v1.html("<script>localStorage.setItem('math_timer_sec', '0');</script>", height=0, width=0)
                     st.rerun()
 
 # 7. [메뉴 3] 오답노트 관리 구역
