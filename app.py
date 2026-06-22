@@ -144,24 +144,33 @@ elif menu == "📝 1:1 랜덤 시험장":
     else:
         file_page = st.session_state.current_target_page
         
-        # 상단 레이아웃 분할: 문제 제목과 실시간 수동 탈부착형 스톱워치 배치
+        # 상단 레이아웃 분할: 문제 제목과 실시간 인터랙티브 스톱워치 배치
         t_col1, t_col2 = st.columns([2, 1])
         with t_col1:
             st.markdown(f"### 🎯 **현재 출제 문항:** [ 발췌 파일 내 {file_page}번째 문제 ]")
         with t_col2:
-            # 💡 [일시정지 기능이 추가된 인터랙티브 스톱워치]
+            # 해설 확인창 작동 여부에 따라 스톱워치 기본 구동 상태(init_running) 결정
+            init_running = "false" if st.session_state.show_answer_trigger else "true"
+            
+            # 💡 [정답 제출 자동 연동 및 UI 여백이 확장된 스톱워치]
             stopwatch_html = f"""
-            <div id="sw-box" style="background-color: #FFF3CD; padding: 8px 12px; border-radius: 8px; border: 1px solid #FFEBAA; font-family: sans-serif; text-align: center;">
-                <span style="color: #856404; font-weight: bold; font-size: 13px;">⏱️ 문제 풀이 시간</span>
-                <div id="stopwatch-display" style="font-size: 20px; font-weight: bold; color: #856404; margin: 2px 0;">0분 00초</div>
-                <button id="btn-toggle" onclick="toggleTimer()" style="padding: 2px 10px; background-color: #856404; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold;">⏸️ 일시정지</button>
+            <div id="sw-box" style="background-color: #FFF3CD; padding: 12px; border-radius: 10px; border: 1px solid #FFEBAA; font-family: sans-serif; text-align: center; box-sizing: border-box;">
+                <span style="color: #856404; font-weight: bold; font-size: 14px;">⏱️ 문제 풀이 시간</span>
+                <div id="stopwatch-display" style="font-size: 22px; font-weight: bold; color: #856404; margin: 6px 0;">0분 00초</div>
+                <button id="btn-toggle" onclick="toggleTimer()" style="padding: 5px 16px; background-color: #856404; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; min-height: 28px;">⏸️ 일시정지</button>
             </div>
             <script>
                 (function() {{
                     let totalSeconds = 0;
-                    let isRunning = true;
+                    let isRunning = {init_running};
                     const display = document.getElementById('stopwatch-display');
                     const btnToggle = document.getElementById('btn-toggle');
+                    
+                    // 정답 제출 상태에 따른 초기 버튼 스타일 세팅
+                    if (!isRunning) {{
+                        btnToggle.textContent = "▶️ 다시 시작";
+                        btnToggle.style.backgroundColor = "#28A745";
+                    }}
                     
                     const intervalId = setInterval(() => {{
                         if (isRunning) {{
@@ -190,7 +199,7 @@ elif menu == "📝 1:1 랜덤 시험장":
                 }})();
             </script>
             """
-            components.html(stopwatch_html, height=85, scrolling=False)
+            components.html(stopwatch_html, height=115, scrolling=False)
         
         try:
             cropped_bytes = get_cropped_image_bytes(FIXED_PDF_NAME, file_page - 1, zoom=2.0)
